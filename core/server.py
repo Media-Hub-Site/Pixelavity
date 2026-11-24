@@ -162,7 +162,7 @@ class PixelAgentsRequestHandler(BaseHTTPRequestHandler):
                 target["detail"] = detail
                 target["icon"] = icon
                 target["last_updated"] = time.time()
-                self.watcher._emit_event(target["id"], station, act, badge, detail, icon)
+                self.watcher._emit_event(target["id"], station, act, badge, detail, icon, immediate=True)
                 return {"ok": True, "agent_id": target["id"], "station": station}
         return {"ok": False, "error": "Agente no encontrado"}
 

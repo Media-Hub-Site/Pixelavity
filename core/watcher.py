@@ -298,7 +298,16 @@ class AntigravityBrainWatcher:
         h = sum(ord(c) for c in agent_id) + index_hint
         return AGENT_PALETTES[h % len(AGENT_PALETTES)]
 
-    def _emit_event(self, agent_id: str, station: str, activity: str, badge: str, detail: str, icon: str = "✨"):
+    def _emit_event(
+        self,
+        agent_id: str,
+        station: str,
+        activity: str,
+        badge: str,
+        detail: str,
+        icon: str = "✨",
+        immediate: bool = False,
+    ):
         """Registra un evento de movimiento/acción para que el cliente anime la caminata."""
         ev = {
             "id": self.event_seq,
@@ -313,6 +322,7 @@ class AntigravityBrainWatcher:
             "badge": badge,
             "detail": detail,
             "icon": icon,
+            "immediate": immediate,
         }
         self.event_seq += 1
         self.events.append(ev)
@@ -797,7 +807,7 @@ class AntigravityBrainWatcher:
                     target["icon"] = icon
                     target["last_updated"] = now
                     target["turn_complete"] = (st == "lounge")
-                    self._emit_event(target["id"], st, act, badge, detail, icon)
+                    self._emit_event(target["id"], st, act, badge, detail, icon, immediate=True)
                 return {"ok": True}
 
             return {"ok": False, "message": f"Acción desconocida: {action_type}"}

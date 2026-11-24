@@ -186,18 +186,27 @@
   class AgentEntity {
     constructor(data) {
       this.id = data.id;
-      this.syncMetadata(data);
+      this.isWalking = false;
+      this.walkFrame = 0;
+      this.walkAnimTimer = 0;
+      this.waypoints = [];
+      this.actionQueue = [];
+      this.currentActionHoldTimer = 0;
 
       // Posición inicial en su estación actual
       const initialStation = STATIONS[data.station] ? data.station : "lounge";
       this.currentStation = initialStation;
+      this.slotIndex = 0;
+
+      this.syncMetadata(data);
+
       this.slotIndex = this.computeSlotIndex(initialStation);
       const slot = this.getSlotCoords(initialStation, this.slotIndex);
 
       // Si es un subagente recién invocado, aparece en el Portal de Orchestrator
       if (data.is_subagent) {
-        this.x = 675;
-        this.y = 115;
+        this.x = 694;
+        this.y = 127;
         this.spawnTimer = 1.4; // Efecto de teletransporte
       } else {
         this.x = slot.x;
@@ -206,14 +215,6 @@
       }
 
       this.face = slot.face || "down";
-      this.isWalking = false;
-      this.walkFrame = 0;
-      this.walkAnimTimer = 0;
-      this.waypoints = [];
-
-      // Cola de visitas a estaciones para que se vea cada caminata aunque ocurran rápido
-      this.actionQueue = [];
-      this.currentActionHoldTimer = 0;
 
       // Si nació en el portal y su estación destino es otra, caminar hacia allá
       if (data.is_subagent && initialStation !== "orchestrator_hub") {
@@ -285,8 +286,24 @@
       return st.slots[slotIdx % st.slots.length];
     }
 
-    enqueueAction(ev) {
+    enqueueAction(ev, immediate = false) {
       if (!ev || !STATIONS[ev.station]) return;
+
+      if (immediate || ev.immediate) {
+        this.actionQueue = [];
+        this.currentActionHoldTimer = 0;
+        this.badge = ev.badge || ev.detail || "Trabajando...";
+        this.detail = ev.detail || "";
+        this.activity = ev.activity || "coding";
+        this.icon = ev.icon || "✨";
+        if (ev.station !== this.currentStation || this.isWalking) {
+          this.navigateToStation(ev.station);
+        } else {
+          this.currentActionHoldTimer = 2.0;
+        }
+        return;
+      }
+
       // Si el último elemento en la cola ya es la misma estación y badge, actualizarlo
       const last = this.actionQueue[this.actionQueue.length - 1];
       if (last && last.station === ev.station && last.badge === ev.badge) {
@@ -1012,12 +1029,14 @@
   // =========================================================================
   // SINCRONIZACIÓN CON EL BACKEND (ANTIGRAVITY BRAIN WATCHER)
   // =========================================================================
+  let isFirstSync = true;
+
   async function pollBackendState() {
+    let snap = null;
     try {
       const res = await fetch(`/api/state?since=${lastEventId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const snap = await res.json();
-      applySnapshot(snap);
+      snap = await res.json();
     } catch (err) {
       const pill = document.getElementById("connPill");
       const txt = document.getElementById("connText");
@@ -1025,12 +1044,21 @@
         txt.textContent = "RECONECTANDO...";
         pill.style.borderColor = "#ff1744";
       }
+      return;
+    }
+
+    try {
+      applySnapshot(snap);
+    } catch (renderErr) {
+      console.error("[PixelAgents] Error aplicando snapshot:", renderErr);
     }
   }
 
   function applySnapshot(snap) {
+    const pill = document.getElementById("connPill");
     const txt = document.getElementById("connText");
     if (txt) txt.textContent = "CONECTADO A ANTIGRAVITY BRAIN";
+    if (pill) pill.style.borderColor = "rgba(0, 230, 118, 0.45)";
 
     const currentIds = new Set();
     for (const agData of snap.agents || []) {
@@ -1050,13 +1078,16 @@
       }
     }
 
-    // Procesar eventos nuevos en la cola de movimiento de cada agente
-    if (Array.isArray(snap.events) && snap.events.length > 0) {
+    // En la primera carga sincronizamos el puntero de eventos sin reproducir todo el historial viejo
+    if (isFirstSync) {
+      isFirstSync = false;
+      lastEventId = snap.latest_event_id || 0;
+    } else if (Array.isArray(snap.events) && snap.events.length > 0) {
       for (const ev of snap.events) {
         if (ev.id > lastEventId) lastEventId = ev.id;
         const ent = entities.get(ev.agent_id);
         if (ent) {
-          ent.enqueueAction(ev);
+          ent.enqueueAction(ev, Boolean(ev.immediate));
         }
       }
     } else if (snap.latest_event_id > lastEventId) {
@@ -1261,8 +1292,24 @@
   document.getElementById("btnSpawnOrch").onclick = () => triggerSimAction("spawn_orchestrator");
   document.getElementById("btnClearSim").onclick = () => triggerSimAction("clear_sim");
 
+  const SIM_TO_STATION = {
+    go_library: "library",
+    go_coding: "coding_desk",
+    go_terminal: "server_lab",
+    go_strategy: "strategy_board",
+    go_lounge: "lounge",
+  };
+
   document.querySelectorAll("[data-sim]").forEach((btn) => {
-    btn.onclick = () => triggerSimAction(btn.getAttribute("data-sim"));
+    btn.onclick = () => {
+      const simKey = btn.getAttribute("data-sim");
+      const targetStation = SIM_TO_STATION[simKey];
+      if (targetStation && selectedAgentId) {
+        commandAgentToStation(selectedAgentId, targetStation);
+      } else {
+        triggerSimAction(simKey);
+      }
+    };
   });
 
   document.querySelectorAll("[data-station]").forEach((btn) => {
