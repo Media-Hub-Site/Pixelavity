@@ -27,16 +27,18 @@
 
 ## 🚀 Cómo Ejecutar
 
-### 1. Ventana Gráfica Nativa (Recomendado)
+### 1. App de Escritorio 100% Nativa en PyQt6 (Recomendado — Sin navegador web)
+```bash
+python app_qt.py
+```
+*Incluye modo **"📌 Fijar Encima"** para mantenerla flotando sobre Antigravity o VS Code y renderizado directo con `QPainter` a 60 FPS.*
+
+### 2. Ventana Gráfica Web / Navegador
 ```bash
 python main.py
-```
-
-### 2. Ventana Gráfica Web Dedicada (Modo App) o Navegador
-```bash
+# o en modo ventana web dedicada / navegador:
 python main.py --app-window
-# o para abrir en una pestaña del navegador:
 python main.py --browser
 ```
 
-El servidor también queda disponible en `http://127.0.0.1:8765`.
+En modo web, el servidor también queda disponible en `http://127.0.0.1:8765`.
