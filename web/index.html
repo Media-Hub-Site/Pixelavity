@@ -8,110 +8,70 @@
 </head>
 <body>
   <div class="app-shell">
-    <!-- BARRA SUPERIOR -->
+    <!-- BARRA SUPERIOR LIMPIA -->
     <header class="topbar">
       <div class="brand-group">
         <div class="pixel-logo">👾</div>
-        <div>
-          <h1 class="brand-title">PIXEL AGENTS <span class="brand-tag">ANTIGRAVITY EDITION</span></h1>
-          <p class="brand-subtitle">Visualizador 2D en Tiempo Real de Agentes Gemini, Chats Simultáneos y Orchestrator</p>
+        <div class="brand-copy">
+          <div class="brand-title">
+            PIXEL AGENTS <span class="brand-tag">ANTIGRAVITY</span>
+          </div>
+          <div class="brand-subtitle">Modo Espectador en Tiempo Real</div>
         </div>
       </div>
 
       <div class="status-group">
         <div class="conn-pill" id="connPill">
           <span class="pulse-dot"></span>
-          <span id="connText">CONECTADO A ANTIGRAVITY BRAIN</span>
+          <span id="connText">EN VIVO</span>
         </div>
-        <div class="stat-box">
-          <span class="stat-label">CHATS ACTIVOS</span>
-          <span class="stat-val" id="statChats">0</span>
+
+        <div class="stats-inline">
+          <span class="stat-pill"><strong id="statChats">0</strong> chats</span>
+          <span class="stat-sep">·</span>
+          <span class="stat-pill"><strong id="statSubs">0</strong> subagentes</span>
         </div>
-        <div class="stat-box">
-          <span class="stat-label">SUBAGENTES</span>
-          <span class="stat-val" id="statSubs">0</span>
-        </div>
-        <div class="filter-toggle">
+
+        <div class="filter-toggle" role="group" aria-label="Filtro de agentes">
           <button class="btn-chip active" id="btnFilterAll" title="Mostrar chats activos y sesiones recientes">Todos</button>
-          <button class="btn-chip" id="btnFilterLive" title="Mostrar únicamente chats con actividad en los últimos 15 min">Solo En Vivo</button>
+          <button class="btn-chip" id="btnFilterLive" title="Mostrar únicamente chats activos ahora">Activos</button>
         </div>
       </div>
     </header>
 
     <!-- CONTENEDOR PRINCIPAL -->
     <main class="main-grid">
-      <!-- ESCENARIO PIXEL ART (CANVAS 2D) -->
+      <!-- ESCENARIO PIXEL ART (100% ESPACIO PARA EL MAPA) -->
       <section class="stage-section">
         <div class="canvas-wrapper" id="canvasWrapper">
-          <canvas id="pixelCanvas" width="1024" height="600"></canvas>
-
-          <!-- Overlay superior dentro del mapa: Leyenda rápida de zonas (clicable) -->
-          <div class="zone-bar">
-            <span class="zone-bar-title">IR A ZONA:</span>
-            <button class="zone-pill" data-station="library">📚 Biblioteca</button>
-            <button class="zone-pill" data-station="strategy_board">💭 Pizarra</button>
-            <button class="zone-pill" data-station="orchestrator_hub">🎛️ Orchestrator</button>
-            <button class="zone-pill" data-station="web_station">🌐 Cabina Web</button>
-            <button class="zone-pill" data-station="coding_desk">💻 Computadores</button>
-            <button class="zone-pill" data-station="server_lab">⚡ Terminal Lab</button>
-            <button class="zone-pill" data-station="art_studio">🎨 Estudio UI</button>
-            <button class="zone-pill" data-station="lounge">☕ Cafetería</button>
-          </div>
-        </div>
-
-        <!-- BARRA INFERIOR DE INTERACCIÓN Y SIMULACIÓN EN VIVO -->
-        <div class="control-deck">
-          <div class="deck-group">
-            <span class="deck-label">🎮 SIMULADOR & PRUEBAS:</span>
-            <button class="btn-pixel btn-cyan" id="btnSpawnChat" title="Simula abrir otro chat paralelo en Antigravity con otro modelo de Gemini">
-              ➕ Nuevo Chat Paralelo
-            </button>
-            <button class="btn-pixel btn-amber" id="btnSpawnOrch" title="Simula que un agente usa Orchestrator e invoca 3 subagentes (Biblioteca, Código y Web)">
-              🎛️ Invocar Orchestrator (3 Subagentes)
-            </button>
-            <button class="btn-pixel btn-danger" id="btnClearSim" title="Quita los agentes de demostración y deja solo los chats reales de Antigravity">
-              🧹 Limpiar Demo
-            </button>
-          </div>
-
-          <div class="deck-group">
-            <span class="deck-label">🚶 MOVER AGENTE SELECCIONADO:</span>
-            <button class="btn-pixel" data-sim="go_library">📚 Buscar Librerías</button>
-            <button class="btn-pixel" data-sim="go_coding">💻 Programar PC</button>
-            <button class="btn-pixel" data-sim="go_terminal">⚡ Usar Terminal</button>
-            <button class="btn-pixel" data-sim="go_strategy">💭 Planificar</button>
-            <button class="btn-pixel" data-sim="go_lounge">☕ Descansar</button>
-          </div>
+          <canvas id="pixelCanvas" width="1040" height="620"></canvas>
         </div>
       </section>
 
-      <!-- PANEL LATERAL: LISTA DE AGENTES, ORCHESTRATOR TREE Y LOG EN VIVO -->
+      <!-- PANEL LATERAL: INSPECTOR, AGENTES Y TELEMETRÍA -->
       <aside class="sidebar">
-        <!-- INSPECTOR DEL AGENTE SELECCIONADO -->
         <div class="panel-card inspector-card" id="inspectorCard">
           <div class="panel-header">
-            <span>🔍 INSPECTOR DE AGENTE</span>
-            <span class="badge-mini" id="inspTypeBadge">SELECCIONA UNO</span>
+            <span>INSPECTOR</span>
+            <span class="badge-mini" id="inspTypeBadge">ESPECTADOR</span>
           </div>
           <div class="inspector-body" id="inspectorBody">
-            <p class="empty-hint">Haz clic sobre cualquier personaje en la oficina o en la lista inferior para inspeccionar su modelo, tarea actual y árbol de Orchestrator.</p>
+            <p class="empty-hint">Haz clic en un personaje para ver su modelo y actividad actual.</p>
           </div>
         </div>
 
-        <!-- LISTA DE AGENTES ACTIVOS (CHATS & SUBAGENTES) -->
         <div class="panel-card agents-card">
           <div class="panel-header">
-            <span>🤖 AGENTES EN LA OFICINA</span>
+            <span>AGENTES</span>
             <span class="badge-mini" id="agentCountBadge">0</span>
           </div>
           <div class="agents-list" id="agentsList"></div>
         </div>
 
-        <!-- REGISTRO DE ACTIVIDAD EN TIEMPO REAL -->
         <div class="panel-card feed-card">
           <div class="panel-header">
-            <span>📡 TELEMETRÍA ANTIGRAVITY</span>
-            <span class="badge-mini">LIVE JSONL</span>
+            <span>ACTIVIDAD RECIENTE</span>
+            <span class="badge-mini live-tag">LIVE</span>
           </div>
           <div class="feed-list" id="feedList"></div>
         </div>

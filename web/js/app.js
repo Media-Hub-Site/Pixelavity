@@ -1,11 +1,10 @@
 /**
- * PixelAgents // Antigravity Live Visualizer
- * Motor 2D Pixel Art en HTML5 Canvas con:
- *  - 8 Zonas interactivas (Biblioteca, Pizarra, Orchestrator, Cabina Web, Computadores, Terminal Lab, Estudio UI, Cafetería)
- *  - Pathfinding por pasillos y puertas (los agentes caminan físicamente de una sala a otra)
- *  - Cola de actividades por agente (para que cada herramienta se vea con su caminata y animación)
- *  - Enlaces holográficos entre Orchestrator y sus Subagentes
- *  - Soporte multi-chat (cada chat de Antigravity es un personaje con su modelo y paleta)
+ * PixelAgents // Antigravity Live Visualizer — Pure Spectator Engine
+ * Motor 2D Pixel Art en HTML5 Canvas:
+ *  - Modo Espectador puro: sin controles de simulación ni movimiento manual
+ *  - Iluminación dinámica de salas (las salas activas se iluminan sutilmente)
+ *  - Etiquetas inteligentes anti-solapamiento (burbujas completas en agentes activos o al hacer hover/clic)
+ *  - Pathfinding por corredor central y puertas con animación fluida a 60 FPS
  */
 
 (() => {
@@ -13,154 +12,148 @@
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
 
-  const W = canvas.width;   // 1024
-  const H = canvas.height;  // 600
-  const HALLWAY_Y = 284;    // Pasillo central horizontal
+  const W = canvas.width;   // 1040
+  const H = canvas.height;  // 620
+  const HALLWAY_Y = 294;
 
   // =========================================================================
-  // DEFINICIÓN DE LAS 8 SALAS / ESTACIONES DE LA OFICINA PIXEL ART
+  // DEFINICIÓN DE LAS 8 SALAS (DISTRIBUCIÓN LIMPIA Y ESPACIADA)
   // =========================================================================
   const STATIONS = {
     library: {
       id: "library",
-      title: "📚 BIBLIOTECA & LIBRERÍAS",
-      subtitle: "Docs / Read / Search",
-      rect: { x: 18, y: 42, w: 245, h: 214 },
-      door: { x: 140, y: 256 },
-      color: "#8d5524",
-      floorA: "#3b281e",
-      floorB: "#332219",
-      border: "#d49a6a",
+      title: "BIBLIOTECA",
+      icon: "📚",
+      rect: { x: 20, y: 20, w: 244, h: 240 },
+      door: { x: 142, y: 260 },
+      floorA: "#271d18",
+      floorB: "#221915",
+      accent: "#d49a6a",
       slots: [
-        { x: 68,  y: 122, face: "up" },
-        { x: 142, y: 122, face: "up" },
-        { x: 212, y: 122, face: "up" },
-        { x: 105, y: 192, face: "down" },
-        { x: 175, y: 192, face: "down" },
+        { x: 68,  y: 130, face: "up" },
+        { x: 142, y: 130, face: "up" },
+        { x: 216, y: 130, face: "up" },
+        { x: 100, y: 212, face: "down" },
+        { x: 184, y: 212, face: "down" },
       ],
     },
     strategy_board: {
       id: "strategy_board",
-      title: "💭 PIZARRA DE ESTRATEGIA",
-      subtitle: "Thinking / Planning",
-      rect: { x: 277, y: 42, w: 225, h: 214 },
-      door: { x: 390, y: 256 },
-      color: "#1e88e5",
-      floorA: "#1a283b",
-      floorB: "#162233",
-      border: "#4fc3f7",
+      title: "ESTRATEGIA",
+      icon: "💭",
+      rect: { x: 278, y: 20, w: 232, h: 240 },
+      door: { x: 394, y: 260 },
+      floorA: "#141f2e",
+      floorB: "#111b28",
+      accent: "#38bdf8",
       slots: [
-        { x: 335, y: 130, face: "up" },
-        { x: 395, y: 130, face: "up" },
-        { x: 452, y: 130, face: "up" },
-        { x: 365, y: 195, face: "up" },
-        { x: 425, y: 195, face: "up" },
+        { x: 332, y: 132, face: "up" },
+        { x: 394, y: 132, face: "up" },
+        { x: 456, y: 132, face: "up" },
+        { x: 360, y: 212, face: "up" },
+        { x: 428, y: 212, face: "up" },
       ],
     },
     orchestrator_hub: {
       id: "orchestrator_hub",
-      title: "🎛️ NÚCLEO ORCHESTRATOR",
-      subtitle: "Multi-Agent Command",
-      rect: { x: 516, y: 42, w: 235, h: 214 },
-      door: { x: 634, y: 256 },
-      color: "#ffb300",
-      floorA: "#261e14",
-      floorB: "#1f1810",
-      border: "#ffd54f",
+      title: "ORCHESTRATOR",
+      icon: "🎛️",
+      rect: { x: 524, y: 20, w: 240, h: 240 },
+      door: { x: 644, y: 260 },
+      floorA: "#211a12",
+      floorB: "#1c160f",
+      accent: "#fbbf24",
       slots: [
-        { x: 595, y: 145, face: "down" },
-        { x: 672, y: 145, face: "down" },
-        { x: 560, y: 195, face: "right" },
-        { x: 705, y: 195, face: "left" },
+        { x: 604, y: 162, face: "down" },
+        { x: 682, y: 162, face: "down" },
+        { x: 568, y: 216, face: "right" },
+        { x: 718, y: 216, face: "left" },
       ],
     },
     web_station: {
       id: "web_station",
-      title: "🌐 CABINA WEB & RADAR",
-      subtitle: "Browser / APIs / Net",
-      rect: { x: 765, y: 42, w: 241, h: 214 },
-      door: { x: 885, y: 256 },
-      color: "#00e5ff",
-      floorA: "#112833",
-      floorB: "#0e222b",
-      border: "#00e5ff",
+      title: "CABINA WEB",
+      icon: "🌐",
+      rect: { x: 778, y: 20, w: 242, h: 240 },
+      door: { x: 899, y: 260 },
+      floorA: "#10212b",
+      floorB: "#0d1c25",
+      accent: "#22d3ee",
       slots: [
-        { x: 820, y: 132, face: "up" },
-        { x: 888, y: 132, face: "up" },
-        { x: 955, y: 132, face: "up" },
-        { x: 855, y: 198, face: "up" },
-        { x: 925, y: 198, face: "up" },
+        { x: 828, y: 132, face: "up" },
+        { x: 899, y: 132, face: "up" },
+        { x: 968, y: 132, face: "up" },
+        { x: 862, y: 214, face: "up" },
+        { x: 936, y: 214, face: "up" },
       ],
     },
     coding_desk: {
       id: "coding_desk",
-      title: "💻 SALA DE COMPUTADORES",
-      subtitle: "Coding / Write & Edit",
-      rect: { x: 18, y: 312, w: 356, h: 268 },
-      door: { x: 196, y: 312 },
-      color: "#00e676",
-      floorA: "#162621",
-      floorB: "#12201c",
-      border: "#00e676",
+      title: "COMPUTADORES",
+      icon: "💻",
+      rect: { x: 20, y: 328, w: 344, h: 272 },
+      door: { x: 192, y: 328 },
+      floorA: "#12211c",
+      floorB: "#0f1c18",
+      accent: "#34d399",
       slots: [
-        { x: 78,  y: 402, face: "up", deskIndex: 0 },
-        { x: 196, y: 402, face: "up", deskIndex: 1 },
-        { x: 314, y: 402, face: "up", deskIndex: 2 },
-        { x: 78,  y: 506, face: "up", deskIndex: 3 },
-        { x: 196, y: 506, face: "up", deskIndex: 4 },
-        { x: 314, y: 506, face: "up", deskIndex: 5 },
+        { x: 78,  y: 422, face: "up" },
+        { x: 192, y: 422, face: "up" },
+        { x: 306, y: 422, face: "up" },
+        { x: 78,  y: 530, face: "up" },
+        { x: 192, y: 530, face: "up" },
+        { x: 306, y: 530, face: "up" },
       ],
     },
     server_lab: {
       id: "server_lab",
-      title: "⚡ LABORATORIO TERMINAL",
-      subtitle: "Bash / Tests / Build",
-      rect: { x: 388, y: 312, w: 224, h: 268 },
-      door: { x: 500, y: 312 },
-      color: "#ff9100",
-      floorA: "#21242b",
-      floorB: "#1b1e24",
-      border: "#ffab40",
+      title: "TERMINAL LAB",
+      icon: "⚡",
+      rect: { x: 378, y: 328, w: 218, h: 272 },
+      door: { x: 487, y: 328 },
+      floorA: "#1a1e26",
+      floorB: "#161920",
+      accent: "#fb923c",
       slots: [
-        { x: 445, y: 432, face: "up" },
-        { x: 505, y: 432, face: "up" },
-        { x: 562, y: 432, face: "up" },
-        { x: 472, y: 515, face: "up" },
-        { x: 535, y: 515, face: "up" },
+        { x: 428, y: 446, face: "up" },
+        { x: 487, y: 446, face: "up" },
+        { x: 546, y: 446, face: "up" },
+        { x: 454, y: 536, face: "up" },
+        { x: 522, y: 536, face: "up" },
       ],
     },
     art_studio: {
       id: "art_studio",
-      title: "🎨 ESTUDIO CREATIVO",
-      subtitle: "UI / Design / Assets",
-      rect: { x: 626, y: 312, w: 168, h: 268 },
-      door: { x: 710, y: 312 },
-      color: "#d500f9",
-      floorA: "#291836",
-      floorB: "#22142d",
-      border: "#ea80fc",
+      title: "ESTUDIO UI",
+      icon: "🎨",
+      rect: { x: 610, y: 328, w: 154, h: 272 },
+      door: { x: 687, y: 328 },
+      floorA: "#21152c",
+      floorB: "#1c1225",
+      accent: "#e879f9",
       slots: [
-        { x: 675, y: 428, face: "up" },
-        { x: 745, y: 428, face: "up" },
-        { x: 710, y: 512, face: "up" },
+        { x: 656, y: 446, face: "up" },
+        { x: 722, y: 446, face: "up" },
+        { x: 687, y: 536, face: "up" },
       ],
     },
     lounge: {
       id: "lounge",
-      title: "☕ CAFETERÍA & DESCANSO",
-      subtitle: "Idle / Waiting Prompt",
-      rect: { x: 808, y: 312, w: 198, h: 268 },
-      door: { x: 907, y: 312 },
-      color: "#ff5252",
-      floorA: "#2b1d24",
-      floorB: "#24181e",
-      border: "#ff8a80",
+      title: "CAFETERÍA & LOUNGE",
+      icon: "☕",
+      rect: { x: 778, y: 328, w: 242, h: 272 },
+      door: { x: 899, y: 328 },
+      floorA: "#21171d",
+      floorB: "#1c1318",
+      accent: "#f87171",
+      // 6 slots bien espaciados en 2 filas para evitar superposición de etiquetas
       slots: [
-        { x: 855, y: 405, face: "up" },
-        { x: 952, y: 405, face: "up" },
-        { x: 862, y: 495, face: "right" },
-        { x: 912, y: 495, face: "up" },
-        { x: 958, y: 495, face: "left" },
+        { x: 822, y: 426, face: "up" },
+        { x: 899, y: 426, face: "up" },
+        { x: 976, y: 426, face: "up" },
+        { x: 822, y: 536, face: "up" },
+        { x: 899, y: 536, face: "up" },
+        { x: 976, y: 536, face: "up" },
       ],
     },
   };
@@ -169,19 +162,17 @@
   // ESTADO EN MEMORIA DEL CLIENTE
   // =========================================================================
   let lastEventId = 0;
+  let isFirstSync = true;
   let filterMode = "all"; // "all" | "live"
   let selectedAgentId = null;
-  let hoveredStationId = null;
+  let hoveredAgentId = null;
 
-  // Mapa de entidades visuales animadas: agentId -> SpriteEntity
   const entities = new Map();
-  // Partículas flotantes (pasos, símbolos de código </>, libros, café, chispas)
   const particles = [];
-  // Registro de eventos recientes para el panel lateral
   let recentLogs = [];
 
   // =========================================================================
-  // CLASE ENTIDAD DE AGENTE (CON PATHFINDING Y COLA DE ACCIONES)
+  // ENTIDAD DE AGENTE (PATHFINDING + ANIMACIÓN)
   // =========================================================================
   class AgentEntity {
     constructor(data) {
@@ -193,7 +184,6 @@
       this.actionQueue = [];
       this.currentActionHoldTimer = 0;
 
-      // Posición inicial en su estación actual
       const initialStation = STATIONS[data.station] ? data.station : "lounge";
       this.currentStation = initialStation;
       this.slotIndex = 0;
@@ -203,11 +193,10 @@
       this.slotIndex = this.computeSlotIndex(initialStation);
       const slot = this.getSlotCoords(initialStation, this.slotIndex);
 
-      // Si es un subagente recién invocado, aparece en el Portal de Orchestrator
       if (data.is_subagent) {
-        this.x = 694;
-        this.y = 127;
-        this.spawnTimer = 1.4; // Efecto de teletransporte
+        this.x = 708;
+        this.y = 114;
+        this.spawnTimer = 1.4;
       } else {
         this.x = slot.x;
         this.y = slot.y;
@@ -216,7 +205,6 @@
 
       this.face = slot.face || "down";
 
-      // Si nació en el portal y su estación destino es otra, caminar hacia allá
       if (data.is_subagent && initialStation !== "orchestrator_hub") {
         this.navigateToStation(initialStation);
       }
@@ -225,6 +213,7 @@
     syncMetadata(data) {
       this.shortId = data.short_id || this.id.slice(0, 8);
       this.name = data.name || this.shortId;
+      this.compactName = this.name.replace(/\s*\[[^\]]+\]/, "").trim() || this.name;
       this.chatTitle = data.chat_title || "Sesión Antigravity";
       this.model = data.model || "Gemini";
       this.isSubagent = Boolean(data.is_subagent);
@@ -232,18 +221,15 @@
       this.parentId = data.parent_id || null;
       this.childrenIds = data.children_ids || [];
       this.palette = data.palette || {
-        suit: "#00e5ff",
-        hair: "#1a237e",
-        accent: "#80d8ff",
-        hat: "headphones",
+        suit: "#38bdf8",
+        hair: "#1e293b",
+        accent: "#7dd3fc",
       };
       this.stepCount = data.step_count || 0;
       this.isLive = Boolean(data.is_live);
       this.isSimulated = Boolean(data.is_simulated);
       this.idleSeconds = data.idle_seconds || 0;
-      this.toolHistory = data.tool_History || [];
 
-      // Si no tiene acción en cola ni está caminando, sincronizar badge/actividad
       if (!this.isWalking && this.actionQueue.length === 0) {
         this.badge = data.badge || "☕ En espera";
         this.detail = data.detail || "";
@@ -267,7 +253,6 @@
       for (let i = 0; i < this.id.length; i++) {
         hash = (hash * 31 + this.id.charCodeAt(i)) >>> 0;
       }
-      // Evitar colisiones con otros agentes en la misma estación
       const taken = new Set();
       for (const [otherId, other] of entities.entries()) {
         if (otherId !== this.id && other.currentStation === stationId) {
@@ -286,29 +271,10 @@
       return st.slots[slotIdx % st.slots.length];
     }
 
-    enqueueAction(ev, immediate = false) {
+    enqueueAction(ev) {
       if (!ev || !STATIONS[ev.station]) return;
-
-      if (immediate || ev.immediate) {
-        this.actionQueue = [];
-        this.currentActionHoldTimer = 0;
-        this.badge = ev.badge || ev.detail || "Trabajando...";
-        this.detail = ev.detail || "";
-        this.activity = ev.activity || "coding";
-        this.icon = ev.icon || "✨";
-        if (ev.station !== this.currentStation || this.isWalking) {
-          this.navigateToStation(ev.station);
-        } else {
-          this.currentActionHoldTimer = 2.0;
-        }
-        return;
-      }
-
-      // Si el último elemento en la cola ya es la misma estación y badge, actualizarlo
       const last = this.actionQueue[this.actionQueue.length - 1];
-      if (last && last.station === ev.station && last.badge === ev.badge) {
-        return;
-      }
+      if (last && last.station === ev.station && last.badge === ev.badge) return;
       this.actionQueue.push({
         station: ev.station,
         activity: ev.activity || "coding",
@@ -316,9 +282,7 @@
         detail: ev.detail || "",
         icon: ev.icon || "✨",
       });
-      if (this.actionQueue.length > 6) {
-        this.actionQueue.shift();
-      }
+      if (this.actionQueue.length > 6) this.actionQueue.shift();
     }
 
     navigateToStation(targetStationId) {
@@ -331,7 +295,6 @@
       const targetSlot = this.getSlotCoords(targetStationId, this.slotIndex);
 
       const pts = [];
-      // Si cambia de habitación, salir por la puerta al pasillo central y entrar por la puerta destino
       if (fromStation.id !== toStation.id) {
         pts.push({ x: fromStation.door.x, y: fromStation.door.y });
         pts.push({ x: fromStation.door.x, y: HALLWAY_Y });
@@ -344,18 +307,14 @@
     }
 
     update(dt) {
-      if (this.spawnTimer > 0) {
-        this.spawnTimer = Math.max(0, this.spawnTimer - dt);
-      }
+      if (this.spawnTimer > 0) this.spawnTimer = Math.max(0, this.spawnTimer - dt);
 
-      // 1. Si está caminando por waypoints
       if (this.waypoints.length > 0) {
         this.isWalking = true;
         const wp = this.waypoints[0];
         const dx = wp.x - this.x;
         const dy = wp.y - this.y;
         const dist = Math.hypot(dx, dy);
-        // Velocidad de caminata (más rápida si hay varias acciones en cola)
         const speed = this.actionQueue.length > 1 ? 185 : 135;
 
         if (dist <= speed * dt) {
@@ -366,33 +325,26 @@
           if (this.waypoints.length === 0) {
             this.isWalking = false;
             this.walkFrame = 0;
-            // Mantener al personaje trabajando en la estación al menos 2.6 segundos antes del siguiente movimiento
-            this.currentActionHoldTimer = this.actionQueue.length > 1 ? 1.8 : 2.8;
+            this.currentActionHoldTimer = this.actionQueue.length > 1 ? 1.8 : 2.6;
           }
         } else {
           this.x += (dx / dist) * speed * dt;
           this.y += (dy / dist) * speed * dt;
-          if (Math.abs(dx) > Math.abs(dy)) {
-            this.face = dx > 0 ? "right" : "left";
-          } else {
-            this.face = dy > 0 ? "down" : "up";
-          }
+          this.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
 
-          // Animación de pasos
           this.walkAnimTimer += dt;
           if (this.walkAnimTimer >= 0.12) {
             this.walkAnimTimer = 0;
             this.walkFrame = (this.walkFrame + 1) % 4;
-            // Polvo de pisadas pixel art
             particles.push({
               x: this.x + (Math.random() * 6 - 3),
               y: this.y + 12,
               vx: 0,
-              vy: -8,
-              life: 0.35,
-              maxLife: 0.35,
+              vy: -7,
+              life: 0.32,
+              maxLife: 0.32,
               type: "dust",
-              color: "rgba(200, 220, 255, 0.35)",
+              color: "rgba(180, 210, 255, 0.28)",
             });
           }
         }
@@ -400,25 +352,22 @@
       }
 
       this.isWalking = false;
-
-      // 2. Si está en una estación ejecutando su actividad, emitir partículas temáticas
       if (this.currentActionHoldTimer > 0) {
         this.currentActionHoldTimer = Math.max(0, this.currentActionHoldTimer - dt);
       }
 
-      // Emitir partículas visuales según la estación donde está trabajando
-      if (Math.random() < dt * 2.2) {
+      // Emitir partículas solo cuando el agente está trabajando (o muy sutil en lounge)
+      const rate = this.currentStation === "lounge" ? 0.35 : 1.7;
+      if (Math.random() < dt * rate) {
         this.emitActivityParticle();
       }
 
-      // 3. Si terminó el tiempo mínimo en la estación y hay más acciones en cola, avanzar a la siguiente
       if (this.currentActionHoldTimer <= 0 && this.actionQueue.length > 0) {
         const nextAct = this.actionQueue.shift();
         this.badge = nextAct.badge;
         this.detail = nextAct.detail;
         this.activity = nextAct.activity;
         this.icon = nextAct.icon;
-
         if (nextAct.station !== this.currentStation) {
           this.navigateToStation(nextAct.station);
         } else {
@@ -428,116 +377,111 @@
     }
 
     emitActivityParticle() {
-      const st = this.currentStation;
-      let text = null;
-      let color = "#00e5ff";
-
-      if (st === "coding_desk") {
-        const syms = ["</>", "{ }", "01", "fn()", "git", "py"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#00e676";
-      } else if (st === "library") {
-        const syms = ["📖", "📚", "pkg", "doc", "🔍"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#ffd54f";
-      } else if (st === "server_lab") {
-        const syms = ["⚡", "$>", "OK", "⚙️"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#ffab40";
-      } else if (st === "strategy_board") {
-        const syms = ["💭", "💡", "?", "✓"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#4fc3f7";
-      } else if (st === "orchestrator_hub") {
-        const syms = ["🎛️", "📡", "⚡"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#ffd54f";
-      } else if (st === "web_station") {
-        const syms = ["🌐", "HTTP", "200", "📡"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#00e5ff";
-      } else if (st === "art_studio") {
-        const syms = ["🎨", "✨", "CSS", "UI"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#ea80fc";
-      } else if (st === "lounge") {
-        const syms = ["☕", "~", "zZ"];
-        text = syms[Math.floor(Math.random() * syms.length)];
-        color = "#ff8a80";
-      }
-
-      if (text) {
-        particles.push({
-          x: this.x + (Math.random() * 18 - 9),
-          y: this.y - 22,
-          vx: (Math.random() - 0.5) * 10,
-          vy: -18 - Math.random() * 10,
-          life: 1.1,
-          maxLife: 1.1,
-          type: "text",
-          text,
-          color,
-        });
-      }
+      const table = {
+        coding_desk: [["</>", "{ }", "01"], "#34d399"],
+        library: [["📖", "doc", "🔍"], "#fbbf24"],
+        server_lab: [["⚡", "$>", "OK"], "#fb923c"],
+        strategy_board: [["💭", "💡"], "#38bdf8"],
+        orchestrator_hub: [["📡", "⚡"], "#fbbf24"],
+        web_station: [["🌐", "200"], "#22d3ee"],
+        art_studio: [["✨", "UI"], "#e879f9"],
+        lounge: [["~"], "#94a3b8"],
+      };
+      const entry = table[this.currentStation];
+      if (!entry) return;
+      const [syms, color] = entry;
+      particles.push({
+        x: this.x + (Math.random() * 14 - 7),
+        y: this.y - 24,
+        vx: (Math.random() - 0.5) * 8,
+        vy: -16 - Math.random() * 8,
+        life: 1.0,
+        maxLife: 1.0,
+        type: "text",
+        text: syms[Math.floor(Math.random() * syms.length)],
+        color,
+      });
     }
   }
 
   // =========================================================================
-  // DIBUJO DEL ESCENARIO PIXEL ART (SALAS, MUEBLES, PASILLO Y DETALLES)
+  // UTILIDADES DE DIBUJO PIXEL ART LIMPIO
   // =========================================================================
-  function drawPixelRect(x, y, w, h, fill, stroke = null, strokeWidth = 2) {
+  function drawRect(x, y, w, h, fill, stroke = null, sw = 1) {
     ctx.fillStyle = fill;
     ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
     if (stroke) {
       ctx.strokeStyle = stroke;
-      ctx.lineWidth = strokeWidth;
-      ctx.strokeRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+      ctx.lineWidth = sw;
+      ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w) - 1, Math.round(h) - 1);
     }
   }
 
-  function drawWorld(nowSec) {
-    // Fondo general del complejo
-    ctx.fillStyle = "#0b0e17";
+  function drawRoundPill(x, y, w, h, r, fill, stroke = null) {
+    ctx.beginPath();
+    ctx.roundRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h), r);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  function getOccupiedStations(visibleEntities) {
+    const counts = {};
+    for (const ent of visibleEntities) {
+      counts[ent.currentStation] = (counts[ent.currentStation] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function drawWorld(nowSec, visibleEntities) {
+    const occupied = getOccupiedStations(visibleEntities);
+
+    // Fondo profundo limpio
+    ctx.fillStyle = "#080b13";
     ctx.fillRect(0, 0, W, H);
 
-    // Pasillo Central Horizontal
-    drawPixelRect(18, 258, W - 36, 52, "#151c2c", "#26324d", 2);
-    // Líneas guía luminosas en el pasillo
-    ctx.strokeStyle = "rgba(0, 229, 255, 0.18)";
-    ctx.setLineDash([8, 8]);
+    // Corredor central
+    drawRect(20, 264, W - 40, 60, "#101624", "#1d283f", 1);
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.14)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 8]);
     ctx.beginPath();
-    ctx.moveTo(35, HALLWAY_Y);
-    ctx.lineTo(W - 35, HALLWAY_Y);
+    ctx.moveTo(40, HALLWAY_Y);
+    ctx.lineTo(W - 40, HALLWAY_Y);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Etiqueta del pasillo
-    ctx.fillStyle = "rgba(139, 155, 180, 0.35)";
-    ctx.font = "bold 10px Consolas, monospace";
+    ctx.fillStyle = "rgba(148, 163, 184, 0.25)";
+    ctx.font = "600 9px Consolas, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("◄═══ CORREDOR CENTRAL ANTIGRAVITY HQ ═══►", W / 2, HALLWAY_Y + 4);
+    ctx.fillText("ANTIGRAVITY HQ  ·  CORREDOR CENTRAL", W / 2, HALLWAY_Y + 3);
 
-    // Dibujar cada una de las 8 estaciones
+    // Dibujar las 8 salas con iluminación dinámica según actividad
     for (const st of Object.values(STATIONS)) {
-      drawStationBase(st, nowSec);
+      const count = occupied[st.id] || 0;
+      const isWorkingRoom = count > 0 && st.id !== "lounge";
+      drawStationBase(st, count, isWorkingRoom);
     }
 
-    // Dibujar el mobiliario Pixel Art detallado de cada sala
-    drawLibraryFurniture(STATIONS.library, nowSec);
-    drawStrategyFurniture(STATIONS.strategy_board, nowSec);
-    drawOrchestratorFurniture(STATIONS.orchestrator_hub, nowSec);
-    drawWebStationFurniture(STATIONS.web_station, nowSec);
-    drawCodingDesksFurniture(STATIONS.coding_desk, nowSec);
-    drawServerLabFurniture(STATIONS.server_lab, nowSec);
-    drawArtStudioFurniture(STATIONS.art_studio, nowSec);
+    // Mobiliario detallado
+    drawLibraryFurniture(STATIONS.library);
+    drawStrategyFurniture(STATIONS.strategy_board);
+    drawOrchestratorFurniture(STATIONS.orchestrator_hub, nowSec, (occupied.orchestrator_hub || 0) > 0);
+    drawWebStationFurniture(STATIONS.web_station, nowSec, (occupied.web_station || 0) > 0);
+    drawCodingDesksFurniture(STATIONS.coding_desk, nowSec, visibleEntities);
+    drawServerLabFurniture(STATIONS.server_lab, nowSec, (occupied.server_lab || 0) > 0);
+    drawArtStudioFurniture(STATIONS.art_studio);
     drawLoungeFurniture(STATIONS.lounge, nowSec);
   }
 
-  function drawStationBase(st, nowSec) {
+  function drawStationBase(st, count, isWorkingRoom) {
     const { x, y, w, h } = st.rect;
-    const isHovered = hoveredStationId === st.id;
 
-    // Piso con patrón de baldosas pixeladas 16x16
+    // Piso en cuadrícula suave
     const tile = 16;
     for (let ty = y; ty < y + h; ty += tile) {
       for (let tx = x; tx < x + w; tx += tile) {
@@ -547,429 +491,427 @@
       }
     }
 
-    // Borde de la sala
-    ctx.strokeStyle = isHovered ? "#ffffff" : st.border;
-    ctx.lineWidth = isHovered ? 3 : 2;
-    ctx.strokeRect(x, y, w, h);
+    // Borde sutil (se ilumina con el color de acento cuando un agente trabaja en esta sala)
+    ctx.strokeStyle = isWorkingRoom ? st.accent : "#23304a";
+    ctx.lineWidth = isWorkingRoom ? 2 : 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
-    // Abertura de la puerta hacia el pasillo
-    ctx.fillStyle = "#151c2c";
-    if (st.door.y <= 260) {
+    // Puerta abierta al corredor
+    ctx.fillStyle = "#101624";
+    if (st.door.y <= 270) {
       ctx.fillRect(st.door.x - 18, y + h - 3, 36, 6);
     } else {
       ctx.fillRect(st.door.x - 18, y - 3, 36, 6);
     }
 
-    // Cartel superior de la sala
-    drawPixelRect(x + 6, y + 6, w - 12, 24, "rgba(11, 14, 23, 0.85)", st.border, 1);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 11px Consolas, monospace";
+    // Cabecera minimalista de sala
+    drawRect(x + 1, y + 1, w - 2, 26, "rgba(10, 14, 24, 0.78)");
+    ctx.fillStyle = isWorkingRoom ? st.accent : "#94a3b8";
+    ctx.font = "bold 10px Consolas, monospace";
     ctx.textAlign = "left";
-    ctx.fillText(st.title, x + 12, y + 22);
+    ctx.fillText(`${st.icon} ${st.title}`, x + 10, y + 18);
+
+    // Indicador numérico discreto si hay agentes dentro
+    if (count > 0) {
+      const badgeW = 20;
+      drawRoundPill(x + w - badgeW - 8, y + 6, badgeW, 15, 7, "rgba(56, 189, 248, 0.16)");
+      ctx.fillStyle = isWorkingRoom ? st.accent : "#cbd5e1";
+      ctx.font = "bold 9px Consolas, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(String(count), x + w - badgeW / 2 - 8, y + 17);
+    }
   }
 
-  // 1. MOBILIARIO BIBLIOTECA (Estanterías con libros de colores, mesas de lectura)
-  function drawLibraryFurniture(st, nowSec) {
+  function drawLibraryFurniture(st) {
     const { x, y } = st.rect;
-    const bookColors = ["#ff5252", "#448aff", "#00e676", "#ffd740", "#e040fb", "#ff6e40"];
-
-    // 3 Grandes estanterías de madera en la pared norte
+    const books = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#a855f7", "#ec4899"];
     for (let s = 0; s < 3; s++) {
-      const sx = x + 18 + s * 74;
-      const sy = y + 40;
-      drawPixelRect(sx, sy, 62, 52, "#4e342e", "#8d6e63", 2);
-
-      // 3 niveles de libros por estantería
+      const sx = x + 18 + s * 72;
+      const sy = y + 38;
+      drawRect(sx, sy, 62, 52, "#3e2723", "#6d4c41", 1);
       for (let row = 0; row < 3; row++) {
         const ry = sy + 6 + row * 15;
-        drawPixelRect(sx + 4, ry + 10, 54, 3, "#3e2723");
+        ctx.fillStyle = "#2b1b17";
+        ctx.fillRect(sx + 4, ry + 10, 54, 3);
         for (let b = 0; b < 8; b++) {
-          ctx.fillStyle = bookColors[(s * 7 + row * 3 + b) % bookColors.length];
+          ctx.fillStyle = books[(s * 7 + row * 3 + b) % books.length];
           ctx.fillRect(sx + 6 + b * 6, ry, 5, 10);
         }
       }
     }
-
-    // Mesas de lectura inferiores con libros abiertos
     for (let t = 0; t < 2; t++) {
-      const tx = x + 38 + t * 96;
-      const ty = y + 155;
-      drawPixelRect(tx, ty, 70, 32, "#6d4c41", "#a1887f", 2);
-      // Libro abierto sobre la mesa
-      drawPixelRect(tx + 16, ty + 8, 16, 12, "#fff8e1", "#bcaaa4", 1);
-      drawPixelRect(tx + 32, ty + 8, 16, 12, "#fff8e1", "#bcaaa4", 1);
-      // Lupa brillante
-      ctx.fillStyle = "#00e5ff";
-      ctx.fillRect(tx + 54, ty + 10, 8, 8);
+      const tx = x + 36 + t * 98;
+      const ty = y + 162;
+      drawRect(tx, ty, 70, 30, "#4e342e", "#795548", 1);
+      drawRect(tx + 14, ty + 7, 16, 12, "#fef3c7", "#a1887f", 1);
+      drawRect(tx + 30, ty + 7, 16, 12, "#fef3c7", "#a1887f", 1);
     }
   }
 
-  // 2. MOBILIARIO PIZARRA DE ESTRATEGIA (Pizarra con diagramas, post-its, mesa táctica)
-  function drawStrategyFurniture(st, nowSec) {
+  function drawStrategyFurniture(st) {
     const { x, y } = st.rect;
-    // Gran pizarra blanca/cristal
     const bx = x + 22;
     const by = y + 40;
-    drawPixelRect(bx, by, 180, 54, "#0d1b2a", "#4fc3f7", 2);
-
-    // Diagrama de flujo pixelado en la pizarra
-    drawPixelRect(bx + 14, by + 12, 28, 14, "#00e5ff");
-    drawPixelRect(bx + 62, by + 12, 28, 14, "#ffb300");
-    drawPixelRect(bx + 110, by + 12, 28, 14, "#00e676");
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
+    drawRect(bx, by, 188, 54, "#0d1726", "#2a4365", 1);
+    drawRect(bx + 14, by + 13, 28, 14, "#38bdf8");
+    drawRect(bx + 62, by + 13, 28, 14, "#fbbf24");
+    drawRect(bx + 110, by + 13, 28, 14, "#34d399");
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(bx + 42, by + 19);
-    ctx.lineTo(bx + 62, by + 19);
-    ctx.moveTo(bx + 90, by + 19);
-    ctx.lineTo(bx + 110, by + 19);
+    ctx.moveTo(bx + 42, by + 20);
+    ctx.lineTo(bx + 62, by + 20);
+    ctx.moveTo(bx + 90, by + 20);
+    ctx.lineTo(bx + 110, by + 20);
     ctx.stroke();
-
-    // Notas adhesivas (Post-its)
-    drawPixelRect(bx + 150, by + 10, 10, 10, "#ffeb3b");
-    drawPixelRect(bx + 163, by + 10, 10, 10, "#ff4081");
-    drawPixelRect(bx + 150, by + 24, 10, 10, "#00e676");
-
-    // Mesa de planificación inferior
-    drawPixelRect(x + 48, y + 155, 130, 28, "#1e2f48", "#4fc3f7", 1);
+    drawRect(bx + 152, by + 11, 10, 10, "#fde047");
+    drawRect(bx + 166, by + 11, 10, 10, "#f472b6");
+    drawRect(bx + 152, by + 25, 10, 10, "#34d399");
+    drawRect(x + 48, y + 162, 136, 26, "#162235", "#2a4365", 1);
   }
 
-  // 3. MOBILIARIO NÚCLEO ORCHESTRATOR (Mesa holográfica + Portal de Subagentes)
-  function drawOrchestratorFurniture(st, nowSec) {
+  function drawOrchestratorFurniture(st, nowSec, active) {
     const { x, y } = st.rect;
-    const cx = x + 82;
-    const cy = y + 105;
-
-    // Consola Holográfica Central
-    drawPixelRect(cx - 42, cy - 26, 84, 52, "#1c160c", "#ffb300", 2);
-    const pulse = 18 + Math.sin(nowSec * 4) * 4;
-    ctx.strokeStyle = "rgba(255, 213, 79, 0.85)";
-    ctx.lineWidth = 2;
+    const cx = x + 80;
+    const cy = y + 98;
+    drawRect(cx - 42, cy - 26, 84, 52, "#19130b", active ? "#fbbf24" : "#5c4620", 1);
+    const pulse = 17 + Math.sin(nowSec * 3.5) * 3;
+    ctx.strokeStyle = active ? "rgba(251, 191, 36, 0.85)" : "rgba(251, 191, 36, 0.35)";
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(cx, cy, pulse, 0, Math.PI * 2);
     ctx.stroke();
-
-    ctx.fillStyle = "#ffd54f";
-    ctx.font = "bold 9px Consolas, monospace";
+    ctx.fillStyle = "#fcd34d";
+    ctx.font = "bold 8px Consolas, monospace";
     ctx.textAlign = "center";
     ctx.fillText("ORCH-CORE", cx, cy + 3);
 
-    // PORTAL DE TELETRANSPORTE DE SUBAGENTES (Derecha de la sala)
-    const px = x + 178;
-    const py = y + 85;
-    drawPixelRect(px - 26, py - 26, 52, 52, "#140f24", "#d500f9", 2);
-    const portalRadius = 14 + Math.cos(nowSec * 5) * 3;
-    ctx.strokeStyle = "#00e5ff";
+    // Spawn Pad
+    const px = x + 184;
+    const py = y + 92;
+    drawRect(px - 26, py - 26, 52, 52, "#140f24", "#7e22ce", 1);
+    const pr = 13 + Math.cos(nowSec * 4) * 2.5;
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.65)";
     ctx.beginPath();
-    ctx.arc(px, py, portalRadius, 0, Math.PI * 2);
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = "#ea80fc";
-    ctx.font = "bold 8px Consolas, monospace";
-    ctx.fillText("SPAWN PAD", px, py + 36);
+    ctx.fillStyle = "#c084fc";
+    ctx.font = "bold 7.5px Consolas, monospace";
+    ctx.fillText("SPAWN PAD", px, py + 37);
   }
 
-  // 4. MOBILIARIO CABINA WEB & RADAR
-  function drawWebStationFurniture(st, nowSec) {
+  function drawWebStationFurniture(st, nowSec, active) {
     const { x, y } = st.rect;
-    // Escritorio curvo con 3 monitores
     for (let m = 0; m < 3; m++) {
-      const mx = x + 24 + m * 68;
-      const my = y + 48;
-      drawPixelRect(mx, my, 54, 34, "#0a1929", "#00e5ff", 2);
-      // Líneas de radar/web en pantalla
-      ctx.fillStyle = "rgba(0, 229, 255, 0.35)";
-      const barW = 14 + ((Math.floor(nowSec * 6) + m * 5) % 30);
-      ctx.fillRect(mx + 6, my + 8, barW, 4);
+      const mx = x + 22 + m * 68;
+      const my = y + 46;
+      drawRect(mx, my, 56, 34, "#0a1724", active ? "#22d3ee" : "#1e3a52", 1);
+      ctx.fillStyle = active ? "rgba(34, 211, 238, 0.45)" : "rgba(34, 211, 238, 0.16)";
+      const bw = active ? 14 + ((Math.floor(nowSec * 6) + m * 5) % 30) : 26;
+      ctx.fillRect(mx + 6, my + 8, bw, 4);
       ctx.fillRect(mx + 6, my + 16, 36, 4);
-      ctx.fillRect(mx + 6, my + 24, 24, 4);
+      ctx.fillRect(mx + 6, my + 24, 22, 4);
     }
-
-    // Globo terráqueo holográfico inferior
-    const gx = x + 120;
-    const gy = y + 165;
-    drawPixelRect(gx - 35, gy - 20, 70, 40, "#0b1d28", "#00b0ff", 1);
-    ctx.strokeStyle = "#00e5ff";
-    ctx.lineWidth = 1.5;
+    const gx = x + 121;
+    const gy = y + 164;
+    drawRect(gx - 34, gy - 20, 68, 40, "#0b1a24", "#1e3a52", 1);
+    ctx.strokeStyle = active ? "#22d3ee" : "rgba(34, 211, 238, 0.4)";
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.arc(gx, gy, 14, 0, Math.PI * 2);
+    ctx.arc(gx, gy, 13, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(gx - 14, gy);
-    ctx.lineTo(gx + 14, gy);
-    ctx.moveTo(gx, gy - 14);
-    ctx.lineTo(gx, gy + 14);
+    ctx.moveTo(gx - 13, gy);
+    ctx.lineTo(gx + 13, gy);
+    ctx.moveTo(gx, gy - 13);
+    ctx.lineTo(gx, gy + 13);
     ctx.stroke();
   }
 
-  // 5. MOBILIARIO SALA DE COMPUTADORES (6 Estaciones de programación con doble monitor)
-  function drawCodingDesksFurniture(st, nowSec) {
-    // Determinar qué escritorios tienen un agente sentado programando ahora mismo
+  function drawCodingDesksFurniture(st, nowSec, visibleEntities) {
     const activeDesks = new Set();
-    for (const ent of entities.values()) {
+    for (const ent of visibleEntities) {
       if (!ent.isWalking && ent.currentStation === "coding_desk") {
         activeDesks.add(ent.slotIndex);
       }
     }
-
     st.slots.forEach((slot, idx) => {
       const dx = slot.x - 42;
       const dy = slot.y - 46;
-      const isOccupied = activeDesks.has(idx);
-
-      // Silla ergonómica donde se sienta el agente
-      drawPixelRect(slot.x - 10, slot.y + 4, 20, 14, "#263238", "#455a64", 1);
-
-      // Mesa del computador
-      drawPixelRect(dx, dy, 84, 34, "#2c384e", isOccupied ? "#00e676" : "#4a5d80", 2);
-
-      // Monitor Izquierdo y Monitor Derecho
+      const occ = activeDesks.has(idx);
+      drawRect(slot.x - 10, slot.y + 4, 20, 14, "#1e293b", "#334155", 1);
+      drawRect(dx, dy, 84, 34, "#1e293b", occ ? "#34d399" : "#334155", 1);
       for (let m = 0; m < 2; m++) {
         const mx = dx + 8 + m * 36;
         const my = dy + 4;
-        drawPixelRect(mx, my, 28, 18, isOccupied ? "#061f14" : "#0f141d", isOccupied ? "#00e676" : "#37474f", 1);
-
-        if (isOccupied) {
-          // Código verde/cyan desplazándose en vivo cuando el agente programa
-          const scroll = Math.floor(nowSec * 8 + idx + m) % 3;
-          ctx.fillStyle = m === 0 ? "#00e676" : "#00e5ff";
-          ctx.fillRect(mx + 3, my + 4 + scroll, 16, 2);
+        drawRect(mx, my, 28, 18, occ ? "#062116" : "#0c121d", occ ? "#34d399" : "#263245", 1);
+        if (occ) {
+          const sc = Math.floor(nowSec * 8 + idx + m) % 3;
+          ctx.fillStyle = m === 0 ? "#34d399" : "#38bdf8";
+          ctx.fillRect(mx + 3, my + 4 + sc, 16, 2);
           ctx.fillRect(mx + 3, my + 9, 20, 2);
-          ctx.fillRect(mx + 3, my + 14 - scroll, 12, 2);
+          ctx.fillRect(mx + 3, my + 14 - sc, 12, 2);
         }
       }
-
-      // Teclado mecánico y gabinete RGB
-      drawPixelRect(dx + 24, dy + 25, 28, 6, "#111722", "#546e7a", 1);
-      drawPixelRect(dx + 70, dy + 6, 10, 22, "#111722", isOccupied ? "#00e5ff" : "#37474f", 1);
+      drawRect(dx + 24, dy + 25, 28, 5, "#0f172a", "#334155", 1);
+      drawRect(dx + 70, dy + 6, 10, 22, "#0f172a", occ ? "#38bdf8" : "#263245", 1);
     });
   }
 
-  // 6. MOBILIARIO LABORATORIO DE SERVIDORES & TERMINAL
-  function drawServerLabFurniture(st, nowSec) {
+  function drawServerLabFurniture(st, nowSec, active) {
     const { x, y } = st.rect;
-    // 4 Racks de servidores con LEDs parpadeantes
     for (let r = 0; r < 4; r++) {
-      const rx = x + 16 + r * 50;
-      const ry = y + 42;
-      drawPixelRect(rx, ry, 42, 62, "#12151c", "#546e7a", 2);
-
+      const rx = x + 15 + r * 49;
+      const ry = y + 40;
+      drawRect(rx, ry, 40, 62, "#0f131a", "#2d3748", 1);
       for (let u = 0; u < 4; u++) {
         const uy = ry + 6 + u * 14;
-        drawPixelRect(rx + 4, uy, 34, 10, "#1e2430");
-        // LEDs parpadeantes
-        const blink = ((Math.floor(nowSec * 6) + r * 3 + u) % 3) === 0;
-        ctx.fillStyle = blink ? "#00e676" : "#ff9100";
+        ctx.fillStyle = "#1a202c";
+        ctx.fillRect(rx + 4, uy, 32, 10);
+        const speed = active ? 8 : 2;
+        const blink = ((Math.floor(nowSec * speed) + r * 3 + u) % 3) === 0;
+        ctx.fillStyle = blink ? "#34d399" : "#fb923c";
         ctx.fillRect(rx + 7, uy + 3, 4, 4);
-        ctx.fillStyle = "#00e5ff";
+        ctx.fillStyle = "#38bdf8";
         ctx.fillRect(rx + 14, uy + 3, 4, 4);
       }
     }
-
-    // Consola Terminal Central
-    drawPixelRect(x + 35, y + 168, 154, 34, "#161b22", "#ff9100", 2);
-    ctx.fillStyle = "#00e676";
-    ctx.font = "bold 10px Consolas, monospace";
+    drawRect(x + 32, y + 174, 154, 32, "#111620", active ? "#fb923c" : "#334155", 1);
+    ctx.fillStyle = active ? "#34d399" : "#64748b";
+    ctx.font = "bold 9.5px Consolas, monospace";
     ctx.textAlign = "left";
-    ctx.fillText("$ antigravity --exec", x + 46, y + 189);
+    ctx.fillText("$ antigravity --exec", x + 43, y + 194);
   }
 
-  // 7. MOBILIARIO ESTUDIO CREATIVO (Caballete de arte y tableta digital)
-  function drawArtStudioFurniture(st, nowSec) {
+  function drawArtStudioFurniture(st) {
     const { x, y } = st.rect;
-    // Caballete con lienzo pixel art
-    drawPixelRect(x + 24, y + 48, 52, 42, "#fff8e1", "#ffb300", 2);
-    ctx.fillStyle = "#ff4081";
-    ctx.fillRect(x + 32, y + 56, 16, 14);
-    ctx.fillStyle = "#00e5ff";
-    ctx.fillRect(x + 48, y + 62, 18, 18);
-
-    // Mesa de diseño UI
-    drawPixelRect(x + 92, y + 52, 58, 38, "#311b92", "#ea80fc", 2);
-    drawPixelRect(x + 102, y + 60, 38, 22, "#1a0933", "#00e5ff", 1);
+    drawRect(x + 18, y + 46, 48, 40, "#fef3c7", "#d97706", 1);
+    ctx.fillStyle = "#f43f5e";
+    ctx.fillRect(x + 25, y + 53, 15, 13);
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(x + 40, y + 59, 17, 17);
+    drawRect(x + 80, y + 50, 56, 36, "#2e1065", "#a855f7", 1);
+    drawRect(x + 90, y + 58, 36, 20, "#13072e", "#38bdf8", 1);
   }
 
-  // 8. MOBILIARIO CAFETERÍA & ZONA DE DESCANSO
   function drawLoungeFurniture(st, nowSec) {
     const { x, y } = st.rect;
-    // Barra de Café y Máquina Espresso
-    drawPixelRect(x + 18, y + 44, 162, 34, "#4e342e", "#a1887f", 2);
-    // Máquina de café
-    drawPixelRect(x + 32, y + 48, 28, 24, "#b71c1c", "#ffcdd2", 1);
+    // Barra de café limpia
+    drawRect(x + 20, y + 42, 202, 30, "#3b231e", "#6d4c41", 1);
+    // Máquina espresso con vapor sutil
+    drawRect(x + 34, y + 46, 26, 22, "#991b1b", "#f87171", 1);
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    const steamY = y + 40 - ((nowSec * 12) % 8);
+    ctx.fillRect(x + 44, steamY, 3, 4);
     // Dispensador de agua
-    drawPixelRect(x + 140, y + 46, 22, 26, "#e1f5fe", "#29b6f6", 1);
-
-    // Sofá rojo Pixel Art en la parte inferior
-    drawPixelRect(x + 42, y + 150, 114, 42, "#880e4f", "#f48fb1", 2);
-    drawPixelRect(x + 50, y + 158, 98, 26, "#ad1457");
+    drawRect(x + 186, y + 44, 22, 24, "#bae6fd", "#38bdf8", 1);
+    // Sofá amplio y limpio
+    drawRect(x + 46, y + 148, 150, 34, "#6b153b", "#be185d", 1);
+    drawRect(x + 54, y + 155, 134, 20, "#831843");
   }
 
   // =========================================================================
   // ENLACES HOLOGRÁFICOS ENTRE ORCHESTRATOR Y SUBAGENTES
   // =========================================================================
-  function drawOrchestratorLinks(nowSec) {
-    for (const ent of entities.values()) {
-      if (filterMode === "live" && !ent.isLive && !ent.isSimulated) continue;
-      if (ent.parentId && entities.has(ent.parentId)) {
+  function drawOrchestratorLinks(nowSec, visibleEntities) {
+    const visibleSet = new Set(visibleEntities.map((e) => e.id));
+    for (const ent of visibleEntities) {
+      if (ent.parentId && visibleSet.has(ent.parentId)) {
         const parent = entities.get(ent.parentId);
         ctx.save();
-        ctx.strokeStyle = "rgba(255, 213, 79, 0.55)";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 6]);
-        ctx.lineDashOffset = -nowSec * 28;
+        ctx.strokeStyle = "rgba(251, 191, 36, 0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 6]);
+        ctx.lineDashOffset = -nowSec * 24;
         ctx.beginPath();
         ctx.moveTo(parent.x, parent.y - 8);
         ctx.lineTo(ent.x, ent.y - 8);
         ctx.stroke();
 
-        // Pulso de datos viajando del Orchestrator al Subagente
-        const t = (nowSec * 0.9) % 1;
+        const t = (nowSec * 0.85) % 1;
         const px = parent.x + (ent.x - parent.x) * t;
         const py = (parent.y - 8) + ((ent.y - 8) - (parent.y - 8)) * t;
-        ctx.fillStyle = "#00e5ff";
-        ctx.fillRect(px - 3, py - 3, 6, 6);
+        ctx.fillStyle = "#38bdf8";
+        ctx.fillRect(px - 2.5, py - 2.5, 5, 5);
         ctx.restore();
       }
     }
   }
 
   // =========================================================================
-  // RENDERIZADO DE PERSONAJES PIXEL ART (SPRITE 16-BIT PROCEDURAL)
+  // RENDERIZADO DE PERSONAJES PIXEL ART (CAPA 1: SPRITE, CAPA 2: ETIQUETAS)
   // =========================================================================
-  function drawAgentSprite(ent, nowSec) {
+  function drawAgentBody(ent, nowSec) {
     const x = Math.round(ent.x);
     const y = Math.round(ent.y);
     const isSelected = ent.id === selectedAgentId;
+    const isHovered = ent.id === hoveredAgentId;
 
-    // Rebote vertical al caminar o respirar
     const walkBob = ent.isWalking
       ? (ent.walkFrame % 2 === 1 ? -3 : 0)
-      : Math.round(Math.sin(nowSec * 4 + x) * 1);
+      : Math.round(Math.sin(nowSec * 3.5 + x) * 1);
 
     ctx.save();
 
-    // Efecto de teletransporte si acaba de aparecer (Spawn Pad)
     if (ent.spawnTimer > 0) {
-      ctx.strokeStyle = "#00e5ff";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(x, y - 6, 22 * ent.spawnTimer, 0, Math.PI * 2);
+      ctx.arc(x, y - 6, 20 * ent.spawnTimer, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // Anillo de selección debajo del personaje
-    if (isSelected) {
-      ctx.strokeStyle = "#00e5ff";
-      ctx.lineWidth = 2;
+    // Anillo de selección o hover
+    if (isSelected || isHovered) {
+      ctx.strokeStyle = isSelected ? "#38bdf8" : "rgba(255, 255, 255, 0.55)";
+      ctx.lineWidth = isSelected ? 2 : 1.2;
       ctx.beginPath();
-      ctx.ellipse(x, y + 12, 16, 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y + 12, 15, 6, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // Sombra en el suelo
-    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-    ctx.fillRect(x - 10, y + 10, 20, 5);
+    // Sombra suave
+    ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
+    ctx.fillRect(x - 9, y + 10, 18, 4);
 
     const py = y + walkBob;
 
-    // Piernas animadas (4 frames de caminata)
-    const legOffsetL = ent.isWalking ? (ent.walkFrame === 1 ? -3 : ent.walkFrame === 3 ? 2 : 0) : 0;
-    const legOffsetR = ent.isWalking ? (ent.walkFrame === 3 ? -3 : ent.walkFrame === 1 ? 2 : 0) : 0;
-    ctx.fillStyle = "#1e272e";
-    ctx.fillRect(x - 7, py + 3 + legOffsetL, 5, 8);
-    ctx.fillRect(x + 2, py + 3 + legOffsetR, 5, 8);
+    // Piernas
+    const legL = ent.isWalking ? (ent.walkFrame === 1 ? -3 : ent.walkFrame === 3 ? 2 : 0) : 0;
+    const legR = ent.isWalking ? (ent.walkFrame === 3 ? -3 : ent.walkFrame === 1 ? 2 : 0) : 0;
+    ctx.fillStyle = "#1e293b";
+    ctx.fillRect(x - 6, py + 3 + legL, 4, 8);
+    ctx.fillRect(x + 2, py + 3 + legR, 4, 8);
 
-    // Torso / Traje del Agente
-    drawPixelRect(x - 9, py - 9, 18, 13, ent.palette.suit, "#0b0e17", 1);
-    // Detalle de pecho / insignia
+    // Torso
+    drawRect(x - 8, py - 9, 16, 13, ent.palette.suit, "#090d16", 1);
     ctx.fillStyle = ent.palette.accent || "#ffffff";
-    ctx.fillRect(x - 3, py - 6, 6, 4);
+    ctx.fillRect(x - 2, py - 6, 4, 4);
 
-    // Brazos (se mueven al caminar o al teclear en el computador)
+    // Brazos
     const isTyping = !ent.isWalking && (ent.currentStation === "coding_desk" || ent.currentStation === "server_lab");
-    const armJitter = isTyping ? Math.round(Math.sin(nowSec * 26) * 2) : 0;
+    const jitter = isTyping ? Math.round(Math.sin(nowSec * 24) * 2) : 0;
     ctx.fillStyle = ent.palette.suit;
-    ctx.fillRect(x - 13, py - 8 + armJitter, 4, 10);
-    ctx.fillRect(x + 9,  py - 8 - armJitter, 4, 10);
+    ctx.fillRect(x - 12, py - 8 + jitter, 4, 9);
+    ctx.fillRect(x + 8,  py - 8 - jitter, 4, 9);
 
-    // Cabeza Pixel Art
-    drawPixelRect(x - 8, py - 23, 16, 14, "#ffccaa", "#0b0e17", 1);
+    // Cabeza
+    drawRect(x - 7, py - 22, 14, 13, "#fed7aa", "#090d16", 1);
 
     // Cabello
-    ctx.fillStyle = ent.palette.hair || "#263238";
-    ctx.fillRect(x - 9, py - 25, 18, 5);
-    if (ent.face === "left") ctx.fillRect(x + 5, py - 23, 4, 9);
-    if (ent.face === "right") ctx.fillRect(x - 9, py - 23, 4, 9);
+    ctx.fillStyle = ent.palette.hair || "#1e293b";
+    ctx.fillRect(x - 8, py - 24, 16, 5);
+    if (ent.face === "left") ctx.fillRect(x + 4, py - 22, 4, 8);
+    if (ent.face === "right") ctx.fillRect(x - 8, py - 22, 4, 8);
 
-    // Ojos según dirección en la que mira
-    ctx.fillStyle = "#111111";
+    // Ojos
+    ctx.fillStyle = "#0f172a";
     if (ent.face === "left") {
-      ctx.fillRect(x - 6, py - 17, 3, 3);
-      ctx.fillRect(x - 1, py - 17, 3, 3);
+      ctx.fillRect(x - 5, py - 16, 2, 3);
+      ctx.fillRect(x - 1, py - 16, 2, 3);
     } else if (ent.face === "right") {
-      ctx.fillRect(x - 2, py - 17, 3, 3);
-      ctx.fillRect(x + 3, py - 17, 3, 3);
+      ctx.fillRect(x - 1, py - 16, 2, 3);
+      ctx.fillRect(x + 3, py - 16, 2, 3);
     } else if (ent.face === "down") {
-      ctx.fillRect(x - 5, py - 17, 3, 3);
-      ctx.fillRect(x + 2, py - 17, 3, 3);
+      ctx.fillRect(x - 4, py - 16, 2, 3);
+      ctx.fillRect(x + 2, py - 16, 2, 3);
     }
 
-    // Accesorio / Casco / Visor según rol o modelo
+    // Antena subagente o audífonos
     if (ent.isSubagent) {
-      // Antena luminosa de Subagente
-      ctx.fillStyle = "#ffd54f";
-      ctx.fillRect(x - 1, py - 30, 2, 5);
-      ctx.fillStyle = "#00e5ff";
-      ctx.fillRect(x - 2, py - 32, 4, 3);
+      ctx.fillStyle = "#fbbf24";
+      ctx.fillRect(x - 1, py - 29, 2, 5);
+      ctx.fillStyle = "#38bdf8";
+      ctx.fillRect(x - 2, py - 31, 4, 2);
     } else {
-      // Visor Cyber o Audífonos de Agente Principal
-      ctx.fillStyle = ent.palette.accent || "#00e5ff";
-      ctx.fillRect(x - 10, py - 19, 2, 6);
-      ctx.fillRect(x + 8,  py - 19, 2, 6);
+      ctx.fillStyle = ent.palette.accent || "#38bdf8";
+      ctx.fillRect(x - 9, py - 18, 2, 5);
+      ctx.fillRect(x + 7, py - 18, 2, 5);
     }
 
-    // Objeto en las manos según la estación actual
+    // Objeto contextual
     if (!ent.isWalking) {
       if (ent.currentStation === "library") {
-        // Sosteniendo un libro abierto en la biblioteca
-        drawPixelRect(x - 7, py - 5, 14, 9, "#fff8e1", "#d49a6a", 1);
-        ctx.fillStyle = "#e65100";
-        ctx.fillRect(x - 5, py - 4, 5, 7);
+        drawRect(x - 6, py - 5, 12, 8, "#fef3c7", "#d97706", 1);
       } else if (ent.currentStation === "lounge") {
-        // Sosteniendo una taza de café caliente
-        drawPixelRect(x + 6, py - 6, 7, 8, "#ffffff", "#ff5252", 1);
+        drawRect(x + 5, py - 6, 6, 7, "#f8fafc", "#f87171", 1);
       }
     }
 
-    // Etiqueta con el nombre del agente y modelo debajo de los pies
-    const nameTag = ent.isSubagent ? `⚡ ${ent.name}` : ent.name;
-    ctx.font = "bold 10px Consolas, monospace";
-    const nameW = ctx.measureText(nameTag).width + 10;
-    drawPixelRect(x - nameW / 2, y + 15, nameW, 15, "rgba(11, 14, 23, 0.88)", ent.palette.suit, 1);
-    ctx.fillStyle = "#ffffff";
+    ctx.restore();
+  }
+
+  function drawAgentOverlay(ent, nowSec, forceFullBubble) {
+    const x = Math.round(ent.x);
+    const y = Math.round(ent.y);
+    const isSelected = ent.id === selectedAgentId;
+    const isHovered = ent.id === hoveredAgentId;
+    const isIdleInLounge = !ent.isWalking && ent.currentStation === "lounge";
+
+    const walkBob = ent.isWalking
+      ? (ent.walkFrame % 2 === 1 ? -3 : 0)
+      : Math.round(Math.sin(nowSec * 3.5 + x) * 1);
+    const py = y + walkBob;
+
+    ctx.save();
+
+    // 1. Etiqueta compacta debajo de los pies (limpia, sin desbordar)
+    const label = ent.isSubagent ? `⚡ ${ent.compactName}` : ent.compactName;
+    const shortLabel = label.length > 13 ? label.slice(0, 12) + "…" : label;
+    ctx.font = "600 9px Consolas, monospace";
+    const nw = ctx.measureText(shortLabel).width + 10;
+    drawRoundPill(
+      x - nw / 2,
+      y + 15,
+      nw,
+      14,
+      4,
+      isSelected ? "rgba(15, 23, 42, 0.96)" : "rgba(10, 14, 24, 0.82)",
+      isSelected ? "#38bdf8" : "rgba(148, 163, 184, 0.25)"
+    );
+    ctx.fillStyle = isSelected ? "#ffffff" : "#cbd5e1";
     ctx.textAlign = "center";
-    ctx.fillText(nameTag, x, y + 26);
+    ctx.fillText(shortLabel, x, y + 25);
 
-    // Globo de diálogo / estado sobre la cabeza
-    const bubbleText = ent.isWalking
-      ? `🚶 → ${STATIONS[ent.currentStation]?.title.split(" ")[1] || ent.currentStation}`
-      : ent.badge;
-    if (bubbleText) {
-      ctx.font = "bold 10px 'Segoe UI', Consolas, sans-serif";
-      const bw = Math.min(185, ctx.measureText(bubbleText).width + 14);
-      const bx = Math.max(12, Math.min(W - bw - 12, x - bw / 2));
-      const by = py - 46;
-
-      drawPixelRect(bx, by, bw, 17, "rgba(19, 24, 38, 0.94)", isSelected ? "#00e5ff" : "#4a5d80", 1);
-      ctx.fillStyle = "#edf2ff";
+    // 2. Globo de estado sobre la cabeza:
+    //    - Si está descansando en Cafetería y NO está seleccionado/hover: solo un pequeño badge "☕" para no ensuciar
+    //    - Si está trabajando, caminando, o seleccionado/hover: burbuja completa nítida
+    if (isIdleInLounge && !forceFullBubble) {
+      drawRoundPill(x - 10, py - 42, 20, 15, 7, "rgba(15, 23, 42, 0.82)", "rgba(248, 113, 113, 0.35)");
+      ctx.fillStyle = "#fca5a5";
+      ctx.font = "10px 'Segoe UI', sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(bubbleText.slice(0, 26), bx + bw / 2, by + 12);
+      ctx.fillText("☕", x, py - 31);
+    } else {
+      const bubbleText = ent.isWalking
+        ? `→ ${STATIONS[ent.currentStation]?.title || ent.currentStation}`
+        : ent.badge;
+      if (bubbleText) {
+        const clipped = bubbleText.length > 26 ? bubbleText.slice(0, 25) + "…" : bubbleText;
+        ctx.font = "600 9.5px 'Segoe UI', Consolas, sans-serif";
+        const bw = ctx.measureText(clipped).width + 14;
+        const bx = Math.max(10, Math.min(W - bw - 10, x - bw / 2));
+        const by = py - 46;
+        drawRoundPill(
+          bx,
+          by,
+          bw,
+          18,
+          6,
+          "rgba(15, 23, 42, 0.95)",
+          isSelected || isHovered ? "#38bdf8" : "rgba(148, 163, 184, 0.35)"
+        );
+        ctx.fillStyle = "#f1f5f9";
+        ctx.textAlign = "center";
+        ctx.fillText(clipped, bx + bw / 2, by + 12.5);
+      }
     }
 
     ctx.restore();
   }
 
   // =========================================================================
-  // SISTEMA DE PARTÍCULAS
+  // PARTÍCULAS
   // =========================================================================
   function updateAndDrawParticles(dt) {
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -987,10 +929,10 @@
       ctx.globalAlpha = alpha;
       if (p.type === "dust") {
         ctx.fillStyle = p.color;
-        ctx.fillRect(Math.round(p.x), Math.round(p.y), 4, 4);
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), 3, 3);
       } else {
         ctx.fillStyle = p.color;
-        ctx.font = "bold 11px Consolas, monospace";
+        ctx.font = "bold 10px Consolas, monospace";
         ctx.textAlign = "center";
         ctx.fillText(p.text, Math.round(p.x), Math.round(p.y));
       }
@@ -999,7 +941,7 @@
   }
 
   // =========================================================================
-  // BUCLE PRINCIPAL DE ANIMACIÓN (60 FPS)
+  // BUCLE PRINCIPAL (60 FPS)
   // =========================================================================
   let lastFrameTime = performance.now();
 
@@ -1008,18 +950,33 @@
     lastFrameTime = nowMs;
     const nowSec = nowMs / 1000;
 
-    drawWorld(nowSec);
-    drawOrchestratorLinks(nowSec);
-
-    // Ordenar entidades por coordenada Y (depth sorting)
     const visibleEntities = Array.from(entities.values()).filter(
-      (e) => filterMode === "all" || e.isLive || e.isSimulated
+      (e) => !e.isSimulated && (filterMode === "all" || e.isLive)
     );
     visibleEntities.sort((a, b) => a.y - b.y);
 
+    drawWorld(nowSec, visibleEntities);
+    drawOrchestratorLinks(nowSec, visibleEntities);
+
+    // 1. Actualizar y dibujar cuerpos de todos los agentes
     for (const ent of visibleEntities) {
       ent.update(dt);
-      drawAgentSprite(ent, nowSec);
+      drawAgentBody(ent, nowSec);
+    }
+
+    // 2. Dibujar etiquetas de fondo (no seleccionados)
+    let priorityAgent = null;
+    for (const ent of visibleEntities) {
+      if (ent.id === hoveredAgentId || ent.id === selectedAgentId) {
+        priorityAgent = ent;
+        continue;
+      }
+      drawAgentOverlay(ent, nowSec, false);
+    }
+
+    // 3. Dibujar al agente seleccionado o bajo el cursor siempre encima de todo
+    if (priorityAgent) {
+      drawAgentOverlay(priorityAgent, nowSec, true);
     }
 
     updateAndDrawParticles(dt);
@@ -1027,10 +984,8 @@
   }
 
   // =========================================================================
-  // SINCRONIZACIÓN CON EL BACKEND (ANTIGRAVITY BRAIN WATCHER)
+  // SINCRONIZACIÓN CON ANTIGRAVITY BRAIN WATCHER
   // =========================================================================
-  let isFirstSync = true;
-
   async function pollBackendState() {
     let snap = null;
     try {
@@ -1042,26 +997,31 @@
       const txt = document.getElementById("connText");
       if (pill && txt) {
         txt.textContent = "RECONECTANDO...";
-        pill.style.borderColor = "#ff1744";
+        pill.style.borderColor = "#f87171";
+        pill.style.color = "#f87171";
       }
       return;
     }
 
     try {
       applySnapshot(snap);
-    } catch (renderErr) {
-      console.error("[PixelAgents] Error aplicando snapshot:", renderErr);
+    } catch (err) {
+      console.error("[PixelAgents] Error aplicando snapshot:", err);
     }
   }
 
   function applySnapshot(snap) {
     const pill = document.getElementById("connPill");
     const txt = document.getElementById("connText");
-    if (txt) txt.textContent = "CONECTADO A ANTIGRAVITY BRAIN";
-    if (pill) pill.style.borderColor = "rgba(0, 230, 118, 0.45)";
+    if (txt) txt.textContent = "EN VIVO";
+    if (pill) {
+      pill.style.borderColor = "rgba(52, 211, 153, 0.3)";
+      pill.style.color = "#34d399";
+    }
 
     const currentIds = new Set();
     for (const agData of snap.agents || []) {
+      if (agData.is_simulated) continue; // Modo espectador puro: solo agentes reales
       currentIds.add(agData.id);
       if (!entities.has(agData.id)) {
         entities.set(agData.id, new AgentEntity(agData));
@@ -1070,7 +1030,6 @@
       }
     }
 
-    // Eliminar agentes simulados si fueron limpiados
     for (const existingId of Array.from(entities.keys())) {
       if (!currentIds.has(existingId)) {
         entities.delete(existingId);
@@ -1078,7 +1037,6 @@
       }
     }
 
-    // En la primera carga sincronizamos el puntero de eventos sin reproducir todo el historial viejo
     if (isFirstSync) {
       isFirstSync = false;
       lastEventId = snap.latest_event_id || 0;
@@ -1086,9 +1044,7 @@
       for (const ev of snap.events) {
         if (ev.id > lastEventId) lastEventId = ev.id;
         const ent = entities.get(ev.agent_id);
-        if (ent) {
-          ent.enqueueAction(ev, Boolean(ev.immediate));
-        }
+        if (ent) ent.enqueueAction(ev);
       }
     } else if (snap.latest_event_id > lastEventId) {
       lastEventId = snap.latest_event_id;
@@ -1098,16 +1054,17 @@
       selectedAgentId = entities.keys().next().value;
     }
 
-    recentLogs = snap.recent_log || [];
+    recentLogs = (snap.recent_log || []).filter((l) => !String(l.agent_id || "").startsWith("sim-") && !String(l.agent_id || "").startsWith("sub-"));
     renderSidebarUI();
   }
 
   // =========================================================================
-  // ACTUALIZACIÓN DE LA INTERFAZ LATERAL (INSPECTOR, LISTA Y TELEMETRÍA)
+  // PANEL LATERAL
   // =========================================================================
   function renderSidebarUI() {
-    const allList = Array.from(entities.values());
-    const visibleList = allList.filter((e) => filterMode === "all" || e.isLive || e.isSimulated);
+    const visibleList = Array.from(entities.values()).filter(
+      (e) => !e.isSimulated && (filterMode === "all" || e.isLive)
+    );
 
     const mainChats = visibleList.filter((e) => !e.isSubagent).length;
     const subAgents = visibleList.filter((e) => e.isSubagent).length;
@@ -1116,10 +1073,9 @@
     document.getElementById("statSubs").textContent = String(subAgents);
     document.getElementById("agentCountBadge").textContent = String(visibleList.length);
 
-    // 1. Renderizar lista de agentes (agrupando subagentes debajo de su Orchestrator padre)
+    // Lista de agentes
     const agentsContainer = document.getElementById("agentsList");
     agentsContainer.innerHTML = "";
-
     for (const ent of visibleList) {
       const card = document.createElement("div");
       card.className = `agent-item${ent.id === selectedAgentId ? " selected" : ""}${ent.isSubagent ? " is-subagent" : ""}`;
@@ -1129,61 +1085,53 @@
         renderSidebarUI();
       };
 
-      const rolePrefix = ent.isSubagent ? "↳ [SUB] " : "💬 ";
-      const statusBadge = ent.isWalking
-        ? `🚶 Caminando a ${STATIONS[ent.currentStation]?.title || ent.currentStation}`
+      const prefix = ent.isSubagent ? "↳ " : "";
+      const statusText = ent.isWalking
+        ? `Caminando a ${STATIONS[ent.currentStation]?.title || ent.currentStation}`
         : ent.badge;
 
       card.innerHTML = `
         <div class="agent-row-top">
-          <div class="agent-name">${rolePrefix}${escapeHtml(ent.name)}</div>
+          <div class="agent-name">${prefix}${escapeHtml(ent.name)}</div>
           <span class="agent-model-pill">${escapeHtml(ent.model)}</span>
         </div>
-        <div class="agent-badge-row">${escapeHtml(statusBadge)}</div>
+        <div class="agent-badge-row">${escapeHtml(statusText)}</div>
         <div class="agent-prompt-row">${escapeHtml(ent.chatTitle)}</div>
       `;
       agentsContainer.appendChild(card);
     }
 
-    // 2. Renderizar Inspector del Agente Seleccionado
+    // Inspector
     const inspBody = document.getElementById("inspectorBody");
     const inspBadge = document.getElementById("inspTypeBadge");
     const sel = entities.get(selectedAgentId);
 
     if (!sel) {
-      inspBadge.textContent = "NINGUNO";
-      inspBody.innerHTML = `<p class="empty-hint">Haz clic sobre un personaje en el mapa para ver sus detalles.</p>`;
+      inspBadge.textContent = "ESPECTADOR";
+      inspBody.innerHTML = `<p class="empty-hint">Haz clic sobre un personaje para ver sus detalles en vivo.</p>`;
     } else {
-      inspBadge.textContent = sel.isSubagent ? `SUBAGENTE (${sel.subagentType.toUpperCase()})` : "AGENTE PRINCIPAL";
-      const stTitle = STATIONS[sel.currentStation]?.title || sel.currentStation;
-      const parentInfo = sel.parentId && entities.has(sel.parentId)
-        ? `<div><strong>Padre Orchestrator:</strong> ${escapeHtml(entities.get(sel.parentId).name)}</div>`
-        : "";
-      const childrenInfo = sel.childrenIds && sel.childrenIds.length > 0
-        ? `<div><strong>Subagentes a cargo:</strong> ${sel.childrenIds.length} activos</div>`
-        : "";
-
+      inspBadge.textContent = sel.isSubagent ? `SUB · ${sel.subagentType.toUpperCase()}` : "PRINCIPAL";
+      const st = STATIONS[sel.currentStation];
+      const stLabel = st ? `${st.icon} ${st.title}` : sel.currentStation;
       inspBody.innerHTML = `
         <div class="insp-title">
-          <span style="color:${sel.palette.suit}">●</span>
+          <span class="insp-dot" style="background:${sel.palette.suit}"></span>
           ${escapeHtml(sel.name)}
         </div>
-        <div class="insp-model">Modelo: ${escapeHtml(sel.model)}</div>
+        <div class="insp-model">${escapeHtml(sel.model)}</div>
         <div class="insp-detail">
-          <div><strong>Ubicación:</strong> ${escapeHtml(stTitle)}</div>
+          <div><strong>Sala:</strong> ${escapeHtml(stLabel)}</div>
           <div><strong>Estado:</strong> ${escapeHtml(sel.badge)}</div>
-          <div style="margin-top:3px;color:#8b9bb4">${escapeHtml(sel.detail || sel.chatTitle)}</div>
+          <div class="insp-detail-muted">${escapeHtml(sel.chatTitle)}</div>
         </div>
         <div class="insp-meta">
           <span>Pasos: <strong>${sel.stepCount}</strong></span>
           <span>ID: <strong>${escapeHtml(sel.shortId)}</strong></span>
-          ${parentInfo}
-          ${childrenInfo}
         </div>
       `;
     }
 
-    // 3. Renderizar Feed de Telemetría en Tiempo Real
+    // Telemetría reciente
     const feedContainer = document.getElementById("feedList");
     feedContainer.innerHTML = "";
     for (const item of recentLogs.slice(0, 12)) {
@@ -1210,115 +1158,40 @@
   }
 
   // =========================================================================
-  // EVENTOS DE INTERACCIÓN (CLIC EN EL MAPA, BOTONES DE ZONA Y SIMULACIÓN)
+  // INTERACCIÓN SOLO ESPECTADOR (HOVER Y CLIC PARA INSPECCIONAR PERSONAJES)
   // =========================================================================
-  function getCanvasMouseCoords(evt) {
+  function getCanvasCoords(evt) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = W / rect.width;
-    const scaleY = H / rect.height;
     return {
-      x: (evt.clientX - rect.left) * scaleX,
-      y: (evt.clientY - rect.top) * scaleY,
+      x: (evt.clientX - rect.left) * (W / rect.width),
+      y: (evt.clientY - rect.top) * (H / rect.height),
     };
   }
 
   canvas.addEventListener("mousemove", (evt) => {
-    const pt = getCanvasMouseCoords(evt);
-    hoveredStationId = null;
-    for (const st of Object.values(STATIONS)) {
-      const r = st.rect;
-      if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) {
-        hoveredStationId = st.id;
+    const pt = getCanvasCoords(evt);
+    let found = null;
+    for (const ent of entities.values()) {
+      if (ent.isSimulated || (filterMode === "live" && !ent.isLive)) continue;
+      if (Math.hypot(pt.x - ent.x, pt.y - (ent.y - 6)) <= 24) {
+        found = ent.id;
         break;
       }
     }
+    hoveredAgentId = found;
+    canvas.style.cursor = found ? "pointer" : "default";
   });
 
-  canvas.addEventListener("click", async (evt) => {
-    const pt = getCanvasMouseCoords(evt);
-
-    // 1. Verificar si hizo clic sobre un personaje
+  canvas.addEventListener("click", (evt) => {
+    const pt = getCanvasCoords(evt);
     for (const ent of entities.values()) {
-      if (Math.hypot(pt.x - ent.x, pt.y - (ent.y - 6)) <= 22) {
+      if (ent.isSimulated || (filterMode === "live" && !ent.isLive)) continue;
+      if (Math.hypot(pt.x - ent.x, pt.y - (ent.y - 6)) <= 24) {
         selectedAgentId = ent.id;
         renderSidebarUI();
         return;
       }
     }
-
-    // 2. Si hizo clic sobre una sala/estación y hay un agente seleccionado, enviar al agente caminando a esa sala
-    for (const st of Object.values(STATIONS)) {
-      const r = st.rect;
-      if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) {
-        if (selectedAgentId) {
-          await commandAgentToStation(selectedAgentId, st.id);
-        }
-        return;
-      }
-    }
-  });
-
-  async function commandAgentToStation(agentId, stationId) {
-    try {
-      await fetch("/api/command_agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_id: agentId, station: stationId }),
-      });
-      await pollBackendState();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  async function triggerSimAction(action) {
-    try {
-      const res = await fetch("/api/simulate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (data.agent_id) selectedAgentId = data.agent_id;
-      if (data.orchestrator_id) selectedAgentId = data.orchestrator_id;
-      await pollBackendState();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  // Conectar botones de la interfaz
-  document.getElementById("btnSpawnChat").onclick = () => triggerSimAction("spawn_chat");
-  document.getElementById("btnSpawnOrch").onclick = () => triggerSimAction("spawn_orchestrator");
-  document.getElementById("btnClearSim").onclick = () => triggerSimAction("clear_sim");
-
-  const SIM_TO_STATION = {
-    go_library: "library",
-    go_coding: "coding_desk",
-    go_terminal: "server_lab",
-    go_strategy: "strategy_board",
-    go_lounge: "lounge",
-  };
-
-  document.querySelectorAll("[data-sim]").forEach((btn) => {
-    btn.onclick = () => {
-      const simKey = btn.getAttribute("data-sim");
-      const targetStation = SIM_TO_STATION[simKey];
-      if (targetStation && selectedAgentId) {
-        commandAgentToStation(selectedAgentId, targetStation);
-      } else {
-        triggerSimAction(simKey);
-      }
-    };
-  });
-
-  document.querySelectorAll("[data-station]").forEach((btn) => {
-    btn.onclick = () => {
-      const st = btn.getAttribute("data-station");
-      if (selectedAgentId) {
-        commandAgentToStation(selectedAgentId, st);
-      }
-    };
   });
 
   document.getElementById("btnFilterAll").onclick = () => {
@@ -1335,8 +1208,7 @@
     renderSidebarUI();
   };
 
-  // Iniciar polling y bucle de renderizado 60 FPS
   pollBackendState();
-  setInterval(pollBackendState, 900);
+  setInterval(pollBackendState, 850);
   requestAnimationFrame(frameLoop);
 })();
