@@ -390,8 +390,20 @@ class CharacterCreatorDialog(QDialog):
         styles_list: List[Dict[str, str]],
         char_field: str,
         cols: int = 4,
-    ) -> QGridLayout:
-        grid = QGridLayout()
+    ) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("""
+            QScrollArea { border: none; background: transparent; }
+            QScrollBar:vertical { background: transparent; width: 6px; margin: 2px; }
+            QScrollBar::handle:vertical { background: #24324d; border-radius: 3px; min-height: 24px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+        """)
+
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setContentsMargins(2, 2, 6, 2)
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(10)
 
@@ -408,7 +420,9 @@ class CharacterCreatorDialog(QDialog):
             self._design_squares[part_kind][sid] = btn
             grid.addWidget(btn, idx // cols, idx % cols)
 
-        return grid
+        grid.setRowStretch((len(styles_list) + cols - 1) // cols, 1)
+        scroll.setWidget(container)
+        return scroll
 
     def _create_color_swatches_row(self, title: str, color_key: str, hex_list: List[str]) -> QWidget:
         w = QWidget()
@@ -448,17 +462,16 @@ class CharacterCreatorDialog(QDialog):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(10)
 
-        lbl = QLabel("Selecciona el diseño del pelo (vista aislada):")
+        lbl = QLabel(f"Selecciona el diseño del pelo ({len(HAIR_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
-        layout.addLayout(self._create_design_grid("hair", HAIR_STYLES, "hair_style", cols=4))
+        layout.addWidget(self._create_design_grid("hair", HAIR_STYLES, "hair_style", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
             "Color del Pelo:",
             "hair_color",
             [c["color"] for c in HAIR_COLORS],
         ))
-        layout.addStretch()
         return page
 
     def _build_face_page(self) -> QWidget:
@@ -467,17 +480,16 @@ class CharacterCreatorDialog(QDialog):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(10)
 
-        lbl = QLabel("Selecciona la expresión de la cara:")
+        lbl = QLabel(f"Selecciona la expresión de la cara ({len(FACE_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
-        layout.addLayout(self._create_design_grid("face", FACE_STYLES, "face_style", cols=4))
+        layout.addWidget(self._create_design_grid("face", FACE_STYLES, "face_style", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
             "Tono de Piel:",
             "skin_color",
             [s["color"] for s in SKIN_TONES],
         ))
-        layout.addStretch()
         return page
 
     def _build_outfit_page(self) -> QWidget:
@@ -486,11 +498,11 @@ class CharacterCreatorDialog(QDialog):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(8)
 
-        lbl = QLabel("Selecciona el diseño de la ropa (vista aislada):")
+        lbl = QLabel(f"Selecciona el diseño de la ropa ({len(OUTFIT_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
-        layout.addLayout(self._create_design_grid("outfit", OUTFIT_STYLES, "outfit_style", cols=4))
+        layout.addWidget(self._create_design_grid("outfit", OUTFIT_STYLES, "outfit_style", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
             "Color Superior (Camisa / Chaqueta / Capa):",
             "top_color",
@@ -501,7 +513,6 @@ class CharacterCreatorDialog(QDialog):
             "bottom_color",
             CLOTHING_COLOR_PRESETS[3:12],
         ))
-        layout.addStretch()
         return page
 
     def _build_shoes_page(self) -> QWidget:
@@ -510,17 +521,16 @@ class CharacterCreatorDialog(QDialog):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(10)
 
-        lbl = QLabel("Selecciona el diseño de los zapatos (vista aislada):")
+        lbl = QLabel(f"Selecciona el diseño de los zapatos ({len(SHOE_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
-        layout.addLayout(self._create_design_grid("shoes", SHOE_STYLES, "shoe_style", cols=4))
+        layout.addWidget(self._create_design_grid("shoes", SHOE_STYLES, "shoe_style", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
             "Color del Calzado:",
             "shoe_color",
             SHOE_COLOR_PRESETS,
         ))
-        layout.addStretch()
         return page
 
     def _build_accessory_page(self) -> QWidget:
@@ -529,17 +539,16 @@ class CharacterCreatorDialog(QDialog):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(10)
 
-        lbl = QLabel("Selecciona el sombrero o accesorio (vista aislada):")
+        lbl = QLabel(f"Selecciona el sombrero o accesorio ({len(ACCESSORY_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
-        layout.addLayout(self._create_design_grid("accessory", ACCESSORY_STYLES, "accessory", cols=4))
+        layout.addWidget(self._create_design_grid("accessory", ACCESSORY_STYLES, "accessory", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
             "Color del Accesorio / Cinta / Detalle:",
             "accessory_color",
             CLOTHING_COLOR_PRESETS[2:11],
         ))
-        layout.addStretch()
         return page
 
     def _refresh_design_squares(self):

@@ -45,10 +45,16 @@ SKIN_TONES = [
 ]
 
 FACE_STYLES = [
-    {"id": "smile",   "name": "Sonrisa Clásica"},
-    {"id": "happy",   "name": "Alegre con Rubor"},
-    {"id": "focused", "name": "Concentrado"},
-    {"id": "cool",    "name": "Guiño / Cool"},
+    {"id": "smile",       "name": "Sonrisa Clásica"},
+    {"id": "happy",       "name": "Alegre con Rubor"},
+    {"id": "focused",     "name": "Concentrado"},
+    {"id": "cool",        "name": "Guiño / Cool"},
+    {"id": "surprised",   "name": "Sorprendido"},
+    {"id": "cat_smile",   "name": "Sonrisa Gatito (:3)"},
+    {"id": "determined",  "name": "Determinado / Pro"},
+    {"id": "sleepy",      "name": "Relajado / Chill"},
+    {"id": "starry",      "name": "Ojos Estrellados"},
+    {"id": "beard_smile", "name": "Con Barba"},
 ]
 
 HAIR_STYLES = [
@@ -63,6 +69,14 @@ HAIR_STYLES = [
     {"id": "curly_afro",    "name": "Rizado con Volumen"},
     {"id": "flat_top",      "name": "Corte Alto (Flat-Top)"},
     {"id": "receding",      "name": "Ejecutivo en M"},
+    {"id": "wolf_cut",      "name": "Wolf Cut / Capas"},
+    {"id": "anime_spiky",   "name": "Puntas Anime / Cyber"},
+    {"id": "twin_buns",     "name": "Dos Moños (Space Buns)"},
+    {"id": "mohawk",        "name": "Cresta Punk / Mohawk"},
+    {"id": "side_shave",    "name": "Rapado Lateral / Undercut"},
+    {"id": "braids",        "name": "Dos Trenzas Largas"},
+    {"id": "curtain_bangs", "name": "Flequillo Cortina (K-Pop)"},
+    {"id": "long_wavy",     "name": "Melena Larga Ondulada"},
     {"id": "bald",          "name": "Sin Pelo"},
 ]
 
@@ -79,33 +93,51 @@ HAIR_COLORS = [
 ]
 
 OUTFIT_STYLES = [
-    {"id": "suit_tie",     "name": "Traje Formal y Corbata"},
-    {"id": "tshirt_jeans", "name": "Camiseta y Pantalón"},
-    {"id": "hoodie",       "name": "Polerón / Hoodie"},
-    {"id": "vest_shirt",   "name": "Chaleco y Camisa"},
-    {"id": "overalls",     "name": "Overol / Jardinera"},
-    {"id": "dress_skirt",  "name": "Blusa y Falda"},
-    {"id": "cloak",        "name": "Capa Larga"},
-    {"id": "tank_top",     "name": "Deportivo Sin Mangas"},
+    {"id": "suit_tie",        "name": "Traje Formal y Corbata"},
+    {"id": "tshirt_jeans",    "name": "Camiseta y Pantalón"},
+    {"id": "hoodie",          "name": "Polerón / Hoodie"},
+    {"id": "vest_shirt",      "name": "Chaleco y Camisa"},
+    {"id": "overalls",        "name": "Overol / Jardinera"},
+    {"id": "dress_skirt",     "name": "Blusa y Falda"},
+    {"id": "cloak",           "name": "Capa Larga"},
+    {"id": "tank_top",        "name": "Deportivo Sin Mangas"},
+    {"id": "cyber_jacket",    "name": "Chaqueta Cyber / Bomber"},
+    {"id": "lab_coat",        "name": "Bata de Laboratorio"},
+    {"id": "kimono",          "name": "Kimono / Haori"},
+    {"id": "striped_sweater", "name": "Suéter a Rayas"},
+    {"id": "knight_armor",    "name": "Armadura Tech"},
+    {"id": "varsity_jacket",  "name": "Chaqueta Universitaria"},
 ]
 
 SHOE_STYLES = [
-    {"id": "classic",  "name": "Zapatos Clásicos"},
-    {"id": "sneakers", "name": "Zapatillas con Suela Blanca"},
-    {"id": "boots",    "name": "Botas"},
+    {"id": "classic",     "name": "Zapatos Clásicos"},
+    {"id": "sneakers",    "name": "Zapatillas Suela Blanca"},
+    {"id": "boots",       "name": "Botas Altas"},
+    {"id": "high_tops",   "name": "Zapatillas Botín"},
+    {"id": "cyber_boots", "name": "Botas Cyber Neón"},
+    {"id": "sandals",     "name": "Sandalias"},
+    {"id": "loafers",     "name": "Mocasines con Hebilla"},
 ]
 
 ACCESSORY_STYLES = [
     {"id": "none",            "name": "Ninguno"},
     {"id": "headphones",      "name": "Audífonos Cyber"},
     {"id": "glasses",         "name": "Lentes Pixel"},
+    {"id": "sunglasses",      "name": "Lentes de Sol"},
+    {"id": "cyber_visor",     "name": "Visor Futurista Neón"},
+    {"id": "baseball_cap",    "name": "Gorra Urbana"},
+    {"id": "beanie",          "name": "Gorro de Lana"},
     {"id": "fedora",          "name": "Sombrero Detective"},
     {"id": "witch_hat",       "name": "Sombrero de Mago"},
     {"id": "top_hat",         "name": "Sombrero de Copa"},
+    {"id": "straw_hat",       "name": "Sombrero de Paja"},
+    {"id": "crown",           "name": "Corona Dorada"},
+    {"id": "cat_ears",        "name": "Orejas de Gato"},
+    {"id": "halo",            "name": "Aureola Flotante"},
+    {"id": "headband",        "name": "Cinta Ninja / Deportiva"},
     {"id": "aviator_goggles", "name": "Casco y Gafas"},
     {"id": "viking_helmet",   "name": "Casco Vikingo"},
     {"id": "nurse_cap",       "name": "Gorro Blanco"},
-    {"id": "straw_hat",       "name": "Sombrero de Paja"},
 ]
 
 DEFAULT_CHARACTERS: List[Dict[str, Any]] = [

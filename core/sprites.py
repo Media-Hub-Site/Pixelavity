@@ -121,6 +121,7 @@ class ChibiSpriteRenderer:
         shoe_sh = _shade(shoe_col, 0.75)
 
         acc_col = char.get("accessory_color", "#ef4444")
+        acc_sh = _shade(acc_col, 0.75)
         acc_hi = _shade(acc_col, 1.25)
 
         face_style = char.get("face_style", "smile")
@@ -144,6 +145,7 @@ class ChibiSpriteRenderer:
             "Z": shoe_col,
             "z": shoe_sh,
             "A": acc_col,
+            "a": acc_sh,
             "e": acc_hi,
             "G": "#7dd3fc",
             "g": "#e0f2fe",
@@ -284,6 +286,52 @@ class ChibiSpriteRenderer:
                 "OOhHHHHHHHHHHHHHHHHhOO",
                 ".OOhhhhhhhhhhhhhhhhOO.",
                 "..OOOOOOOOOOOOOOOOOO..",
+            ])
+        elif hair_style == "wolf_cut":
+            # Wolf Cut: capas despeinadas que caen detrás de la nuca y sobresalen en puntas al cuello
+            stamp(3, 10 + bob, [
+                "..OOOOOOOOOOOOOOOOOO..",
+                ".OOhHHHHHHHHHHHHHHhOO.",
+                "OOHHHHHHHHHHHHHHHHHHOO",
+                "OOhHHHHHHHHHHHHHHHHhOO",
+                "OOdhhHHHHHHHHHHHHhhdOO",
+                ".OOhhhOOhhhhhhOOhhhOO.",
+                "..OOOO..OOOOOO..OOOO..",
+            ])
+        elif hair_style == "twin_buns":
+            # Dos moños altos simétricos (Space Buns) arriba a izquierda y derecha
+            stamp(4, 2 + bob, [
+                ".OOOO..........OOOO.",
+                "OHLLHO........OHLLHO",
+                "OHHHhO........OHHHhO",
+                "OOhhAO........OAhhOO",
+                ".OOOO..........OOOO.",
+            ])
+        elif hair_style == "braids" and direction in ("down", "left"):
+            # Dos trenzas largas con detalle de eslabones cayendo a ambos lados del rostro
+            stamp(4, 13 + bob, [
+                ".OOO............OOO.",
+                "OHhO............OHhO",
+                "OhHO............OhHO",
+                "OHhO............OHhO",
+                "OhHO............OhHO",
+                "OAAO............OAAO",
+                "OHhO............OHhO",
+                ".OO..............OO.",
+            ])
+        elif hair_style == "long_wavy" and direction in ("down", "left"):
+            # Melena larga ondulada cayendo abundante por ambos lados de la cabeza y espalda
+            stamp(3, 11 + bob, [
+                "..OOOOOOOOOOOOOOOOOO..",
+                ".OOHHHHHHHHHHHHHHHHOO.",
+                "OOHLHHHHHHHHHHHHHHLHOO",
+                "OOHHHHHHHHHHHHHHHHHHOO",
+                "OOhHHHHHHHHHHHHHHHHhOO",
+                "OOhhhhhhhhhhhhhhhhhhOO",
+                ".OOhhhHHHHHHHHHHhhhOO.",
+                ".OOdhhHHHHHHHHHHhhdOO.",
+                "..OOdhhhhhhhhhhhhdOO..",
+                "...OOOOOOOOOOOOOOOO...",
             ])
         elif hair_style == "top_bun":
             # Moño redondo alto inclinado en la esquina superior derecha (fila 4 col 1)
@@ -473,6 +521,101 @@ class ChibiSpriteRenderer:
                     "OOHHOO......OOHHOO",
                     ".OOO..........OOO.",
                 ])
+            elif hair_style == "wolf_cut":
+                # Wolf Cut: flequillo en cortina dividido + capas con picos laterales
+                stamp(4, 4, [
+                    "....OOOOOOOOOOOO....",
+                    "..OOHLLHHHHHHLLHOO..",
+                    ".OOHHHHHHHHHHHHHHOO.",
+                    "OOHHHHHHOOOOHHHHHHOO",
+                    "OOHHHHOO....OOHHHHOO",
+                    "OOHHOO........OOHHOO",
+                    "OOhO............OhOO",
+                    ".OO..............OO.",
+                ])
+            elif hair_style == "anime_spiky":
+                # Puntas Anime / Cyber dramáticas con gran volumen y mechón central
+                stamp(2, 1, [
+                    "......OO.....OOO........",
+                    ".....OHHO...OHLHO...OO..",
+                    "..OO.OHHHO.OHLHHHO.OHHO.",
+                    ".OHHOOHHHHOOHHHHHHOHHHO.",
+                    ".OOHLHHHHHHHHHHHHHHHLHO.",
+                    "OOHHHHHHHOOHHHOOHHHHHHOO",
+                    ".OOHHHHOO..OHO..OOHHHHO.",
+                    "..OOHHO.....O.....OHHOO.",
+                    "...OOO.............OOO..",
+                ])
+            elif hair_style == "twin_buns":
+                # Flequillo redondo lindo para combinar con los dos moños altos
+                stamp(6, 6, [
+                    "...OOOOOOOOOO...",
+                    "..OHLLLLLLLLHO..",
+                    ".OHHHHHHHHHHHHO.",
+                    "OOHHHHHOOHHHHHOO",
+                    "OOHHOO....OOHHOO",
+                    ".OOO........OOO.",
+                ])
+            elif hair_style == "mohawk":
+                # Cresta Punk alta en el centro con laterales rapados
+                stamp(6, 1, [
+                    ".....OOOOOO.....",
+                    "....OHLLLLHO....",
+                    "...OOHHHHHHOO...",
+                    "...OOHHHHHHOO...",
+                    "...OOhHHHHhOO...",
+                    "..OOhHHHHHHhOO..",
+                    ".OOhOOOOOOOOOhO.",
+                    ".OO..........OO.",
+                ])
+            elif hair_style == "side_shave":
+                # Undercut / Rapado lateral izquierdo + gran flequillo asimétrico cayendo a la derecha
+                stamp(5, 4, [
+                    "......OOOOOOOOOO....",
+                    "....OOHLLLLLLLLHOO..",
+                    "...OOHLHHHHHHHHHHOO.",
+                    "..OOhHOOHHHHHHHHHHOO",
+                    "..OOhO...OOHHHHHHHOO",
+                    "..OOhO.....OOHHHHHOO",
+                    "...OO.......OOHHHHOO",
+                    ".............OOHhOO.",
+                    "..............OOOO..",
+                ])
+            elif hair_style == "braids":
+                # Raya al medio limpia conectando con las dos trenzas laterales
+                stamp(6, 6, [
+                    "...OOOOOOOOOO...",
+                    "..OHLLLLLLLLHO..",
+                    ".OHHHHHHOHHHHHO.",
+                    "OOHHHHOO.OOHHHHO",
+                    "OOHHOO.....OOHHO",
+                    "OOhO.........OhO",
+                    ".OO...........OO",
+                ])
+            elif hair_style == "curtain_bangs":
+                # Flequillo Cortina (K-Pop / Middle Part) con dos arcos elegantes sobre la frente
+                stamp(5, 5, [
+                    "...OOOOOOOOOOOO...",
+                    "..OHLLLLLLLLLLHO..",
+                    ".OHLHHHHHHHHHHLHO.",
+                    "OOHHHHHHOOHHHHHHOO",
+                    "OOHHHHHO..OHHHHHOO",
+                    "OOHHHHO....OHHHHOO",
+                    "OOHhOO......OOhHOO",
+                    ".OOO..........OOO.",
+                ])
+            elif hair_style == "long_wavy":
+                # Melena Larga Ondulada con flequillo suave y ondas laterales
+                stamp(5, 5, [
+                    "...OOOOOOOOOOOO...",
+                    "..OHLLLLLLLLLLHO..",
+                    ".OHLHHHHHHHHHHLHO.",
+                    "OOHHHHHHOOHHHHHHOO",
+                    "OOHHHHOO..OOHHHHOO",
+                    "OOHHOO......OOHHOO",
+                    "OOHhO........OhHOO",
+                    "OOhO..........OhOO",
+                ])
             return
 
         # Vista lateral ("left"): Flequillo al frente (izquierda) y nuca cubierta (derecha)
@@ -508,26 +651,48 @@ class ChibiSpriteRenderer:
             return
 
         if direction == "down":
-            # Ojos verticales 1x2 + sonrisa pixelada (proporción exacta de ref_sprites.png)
-            px(11, 13, OUTLINE)
-            px(11, 14, OUTLINE)
+            # Ojos según expresión
             if face_style == "cool":
+                px(11, 13, OUTLINE)
+                px(11, 14, OUTLINE)
                 px(15, 14, OUTLINE)
                 px(16, 14, OUTLINE)
+            elif face_style == "sleepy":
+                px(10, 14, OUTLINE)
+                px(11, 14, OUTLINE)
+                px(16, 14, OUTLINE)
+                px(17, 14, OUTLINE)
+            elif face_style == "determined":
+                px(10, 12, OUTLINE)
+                px(11, 13, OUTLINE)
+                px(11, 14, OUTLINE)
+                px(17, 12, OUTLINE)
+                px(16, 13, OUTLINE)
+                px(16, 14, OUTLINE)
+            elif face_style == "starry":
+                px(11, 13, OUTLINE)
+                px(11, 14, OUTLINE)
+                px(10, 13, "#facc15")
+                px(16, 13, OUTLINE)
+                px(16, 14, OUTLINE)
+                px(17, 13, "#facc15")
             else:
+                px(11, 13, OUTLINE)
+                px(11, 14, OUTLINE)
                 px(16, 13, OUTLINE)
                 px(16, 14, OUTLINE)
 
-            if face_style in ("smile", "happy"):
+            # Boca y detalles faciales
+            if face_style in ("smile", "happy", "starry"):
                 px(11, 16, OUTLINE)
                 px(12, 17, OUTLINE)
                 px(13, 17, OUTLINE)
                 px(14, 17, OUTLINE)
                 px(15, 16, OUTLINE)
-                if face_style == "happy":
+                if face_style in ("happy", "starry"):
                     px(9, 15, "#f472b6")
                     px(18, 15, "#f472b6")
-            elif face_style == "focused":
+            elif face_style in ("focused", "determined"):
                 px(12, 17, OUTLINE)
                 px(13, 17, OUTLINE)
                 px(14, 17, OUTLINE)
@@ -536,16 +701,62 @@ class ChibiSpriteRenderer:
                 px(13, 17, OUTLINE)
                 px(14, 17, OUTLINE)
                 px(15, 16, OUTLINE)
+            elif face_style == "surprised":
+                px(13, 16, OUTLINE)
+                px(14, 16, OUTLINE)
+                px(13, 17, OUTLINE)
+                px(14, 17, OUTLINE)
+            elif face_style == "cat_smile":
+                px(10, 16, OUTLINE)
+                px(11, 17, OUTLINE)
+                px(12, 17, OUTLINE)
+                px(13, 16, OUTLINE)
+                px(14, 16, OUTLINE)
+                px(15, 17, OUTLINE)
+                px(16, 17, OUTLINE)
+                px(17, 16, OUTLINE)
+                px(9, 15, "#f472b6")
+                px(18, 15, "#f472b6")
+            elif face_style == "sleepy":
+                px(12, 17, OUTLINE)
+                px(13, 17, OUTLINE)
+                px(14, 17, OUTLINE)
+            elif face_style == "beard_smile":
+                for xx in range(10, 18):
+                    px(xx, 18, "#3e2723")
+                for xx in range(11, 17):
+                    px(xx, 17, "#3e2723")
+                px(12, 16, OUTLINE)
+                px(13, 16, WHITE)
+                px(14, 16, WHITE)
+                px(15, 16, OUTLINE)
         else:
             # Perfil izquierdo ("left")
-            px(9, 13, OUTLINE)
-            px(9, 14, OUTLINE)
-            px(13, 13, OUTLINE)
-            px(13, 14, OUTLINE)
-            px(9, 16, OUTLINE)
-            px(10, 17, OUTLINE)
-            px(11, 17, OUTLINE)
-            px(12, 16, OUTLINE)
+            if face_style == "sleepy":
+                px(8, 14, OUTLINE)
+                px(9, 14, OUTLINE)
+                px(12, 14, OUTLINE)
+                px(13, 14, OUTLINE)
+            else:
+                px(9, 13, OUTLINE)
+                px(9, 14, OUTLINE)
+                px(13, 13, OUTLINE)
+                px(13, 14, OUTLINE)
+            if face_style == "beard_smile":
+                for xx in range(8, 13):
+                    px(xx, 18, "#3e2723")
+                px(9, 17, "#3e2723")
+                px(10, 17, "#3e2723")
+            elif face_style == "surprised":
+                px(9, 16, OUTLINE)
+                px(10, 16, OUTLINE)
+                px(9, 17, OUTLINE)
+                px(10, 17, OUTLINE)
+            else:
+                px(9, 16, OUTLINE)
+                px(10, 17, OUTLINE)
+                px(11, 17, OUTLINE)
+                px(12, 16, OUTLINE)
 
     def _draw_body_and_legs(
         self,
@@ -613,6 +824,60 @@ class ChibiSpriteRenderer:
                     "OTTtttTO",
                     "OOOOOOOO",
                 ]
+            elif outfit == "cyber_jacket":
+                torso = [
+                    "OOOOOOOO",
+                    "OTeKKetO",
+                    "OTAAtATO",
+                    "OTTTTTtO",
+                    "OTeTTetO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "lab_coat":
+                torso = [
+                    "OOOOOOOO",
+                    "OWWTTWWO",
+                    "OWWTTWWO",
+                    "OWWTTWWO",
+                    "OWWOOwWO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "kimono":
+                torso = [
+                    "OOOOOOOO",
+                    "OTWKKWTO",
+                    "OTTWTtTO",
+                    "OAAAAAao",
+                    "OTTTTTtO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "striped_sweater":
+                torso = [
+                    "OOOOOOOO",
+                    "OTTTTTTO",
+                    "OWWWWWWO",
+                    "OTTTTTtO",
+                    "OWWWWWWO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "knight_armor":
+                torso = [
+                    "OOOOOOOO",
+                    "OMMYYMMO",
+                    "OMMMMMmO",
+                    "OMmAAmMO",
+                    "OmmmmmmO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "varsity_jacket":
+                torso = [
+                    "OOOOOOOO",
+                    "OTWKKWTO",
+                    "OTTWWTTO",
+                    "OTTWWTtO",
+                    "OTTtttTO",
+                    "OOOOOOOO",
+                ]
             else:
                 torso = [
                     "OOOOOOOO",
@@ -623,26 +888,30 @@ class ChibiSpriteRenderer:
                     "OOOOOOOO",
                 ]
         else:
-            torso = [
-                "OOOOOOOO",
-                "OTTTTTTO",
-                "OTTTTTTO",
-                "OTTTTTtO",
-                "OTTtttTO",
-                "OOOOOOOO",
-            ]
+            if outfit == "lab_coat":
+                torso = ["OOOOOOOO", "OWWWWWWO", "OWWWWWWO", "OWWWWWWO", "OWWwwwWO", "OOOOOOOO"]
+            elif outfit == "knight_armor":
+                torso = ["OOOOOOOO", "OMMMMMMO", "OMMMMMmO", "OMMMMMmO", "OmmmmmmO", "OOOOOOOO"]
+            else:
+                torso = ["OOOOOOOO", "OTTTTTTO", "OTTTTTTO", "OTTTTTtO", "OTTtttTO", "OOOOOOOO"]
         stamp(10, 19, torso)
 
         # 2. Brazos pegados al torso (x: 8..9 izquierda, x: 18..19 derecha)
         bare_arm = outfit == "tank_top"
         short_sleeve = outfit in ("tshirt_jeans", "dress_skirt", "overalls", "vest_shirt")
+        white_sleeve = outfit in ("vest_shirt", "lab_coat", "varsity_jacket")
         if bare_arm:
             arm_l = ["OO", "KO", "KO", "KO", "kO", "OO"]
             arm_r = ["OO", "OK", "OK", "OK", "Ok", "OO"]
+        elif outfit == "knight_armor":
+            arm_l = ["OO", "MO", "MO", "mO", "MO", "OO"]
+            arm_r = ["OO", "OM", "OM", "Om", "OM", "OO"]
+        elif white_sleeve:
+            arm_l = ["OO", "WO", "WO", "WO" if outfit != "vest_shirt" else "KO", "KO", "OO"]
+            arm_r = ["OO", "OW", "OW", "OW" if outfit != "vest_shirt" else "OK", "OK", "OO"]
         elif short_sleeve:
-            c_top = "W" if outfit == "vest_shirt" else "T"
-            arm_l = ["OO", f"{c_top}O", f"{c_top}O", "KO", "kO", "OO"]
-            arm_r = ["OO", f"O{c_top}", f"O{c_top}", "OK", "Ok", "OO"]
+            arm_l = ["OO", "TO", "TO", "KO", "kO", "OO"]
+            arm_r = ["OO", "OT", "OT", "OK", "Ok", "OO"]
         else:
             arm_l = ["OO", "TO", "TO", "tO", "KO", "OO"]
             arm_r = ["OO", "OT", "OT", "Ot", "OK", "OO"]
@@ -654,10 +923,19 @@ class ChibiSpriteRenderer:
             ax = 12 + (1 if walk_frame == 1 else (-1 if walk_frame == 3 else 0))
             stamp(ax, 20, ["OOOO", "OTTO", "OTtO", "OKkO", "OOOO"])
 
-        # 3. Piernas JUNTAS con costura central oscura (x: 10..17, y: 25..30, idénticas a ref_sprites.png)
-        shoe_c = "W" if shoe_style == "sneakers" else "Z"
+        # 3. Piernas JUNTAS con costura central oscura (x: 10..17, y: 25..30)
+        if shoe_style in ("sneakers", "high_tops"):
+            shoe_bot = "OWzOOWzO"
+        elif shoe_style == "cyber_boots":
+            shoe_bot = "OAeOOAeO"
+        elif shoe_style == "sandals":
+            shoe_bot = "OKZOKZOO"
+        elif shoe_style == "loafers":
+            shoe_bot = "OZYOOZYO"
+        else:
+            shoe_bot = "OZzOOZzO"
+
         if outfit == "dress_skirt":
-            # Falda + piernas juntas con zapatos
             stamp(10, 24, [
                 "OOOOOOOO",
                 "OBBBBBbO",
@@ -668,18 +946,19 @@ class ChibiSpriteRenderer:
             r_row = "OKkO" if leg_r_dy == 0 else "OZZO"
             stamp(10, 27, [
                 f"{l_row}{r_row}",
-                f"OZZOOZZO",
-                f"O{shoe_c}zOO{shoe_c}zO",
+                "OZZOOZZO" if shoe_style != "sandals" else "OKkOOKkO",
+                shoe_bot,
                 "OOOOOOOO",
             ])
         else:
-            l_leg = "OBbO" if leg_l_dy == 0 else "OZZO"
-            r_leg = "OBbO" if leg_r_dy == 0 else "OZZO"
+            tall_boot = shoe_style in ("boots", "high_tops", "cyber_boots")
+            l_leg = "OZZO" if (tall_boot or leg_l_dy != 0) else "OBbO"
+            r_leg = "OZZO" if (tall_boot or leg_r_dy != 0) else "OBbO"
             stamp(10, 25, [
                 "OBbOOBbO",
                 f"{l_leg}{r_leg}",
-                "OZZOOZZO",
-                f"O{shoe_c}zOO{shoe_c}zO",
+                "OZZOOZZO" if shoe_style != "sandals" else "OKkOOKkO",
+                shoe_bot,
                 "OOOOOOOO",
             ])
 
@@ -794,6 +1073,86 @@ class ChibiSpriteRenderer:
                     "OAAAAO",
                     ".OOOO.",
                 ])
+        elif acc == "sunglasses" and direction != "up":
+            if direction == "down":
+                stamp(7, 12, [
+                    "OOOOOO..OOOOOO",
+                    "ONWNNNOOONWNNNO",
+                    "ONNNNNO..ONNNNO",
+                    ".OOOOO....OOOOO",
+                ])
+            else:
+                stamp(6, 12, [
+                    "OOOOO.OOOOO",
+                    "ONWNNOONWNNO",
+                    "ONNNNOONNNNO",
+                    ".OOOO..OOOO",
+                ])
+        elif acc == "cyber_visor" and direction != "up":
+            stamp(6, 11, [
+                ".OOOOOOOOOOOOOO.",
+                "OOAAeeeeeeeeAAOO",
+                "OOAAAAAAAAAAAAOO",
+                ".OOOOOOOOOOOOOO.",
+            ])
+        elif acc == "baseball_cap":
+            if direction == "down":
+                stamp(5, 3, [
+                    "....OOOOOOOOOO....",
+                    "..OOAAAAAAAAAAOO..",
+                    ".OOAAeeAAAAAAAAOO.",
+                    "OOAAAAAAAAAAAAAAOO",
+                    "OOOOOOOOOOOOOOOOOO",
+                    ".OOaaaaaaaaaaaaOO.",
+                ])
+            else:
+                stamp(3, 3, [
+                    "......OOOOOOOOOO..",
+                    "....OOAAAAAAAAAAOO",
+                    "...OOAAeeAAAAAAAAO",
+                    "OOOOAAAAAAAAAAAAAO",
+                    "OOOOOOOOOOOOOOOOOO",
+                ])
+        elif acc == "beanie":
+            stamp(5, 2, [
+                ".....OOOOOOOO.....",
+                "...OOAAAAAAAAOO...",
+                "..OOAAeeAAAAAAOO..",
+                ".OOAAAAAAAAAAAAOO.",
+                "OOaaAAaaAAaaAAaaOO",
+                "OOOOOOOOOOOOOOOOOO",
+            ])
+        elif acc == "crown":
+            stamp(6, 1, [
+                ".OO....OO....OO.",
+                "OYYO..OYYO..OYYO",
+                "OYYOOOOYYOOOOYYO",
+                "OYYYYAAYYAAYYYYO",
+                "OYYYYYYYYYYYYYYO",
+                ".OOOOOOOOOOOOOO.",
+            ])
+        elif acc == "cat_ears":
+            stamp(5, 1, [
+                ".OO............OO.",
+                "OAAO..........OAAO",
+                "OAPAO........OAPAO",
+                "OAPPAO......OAPPAO",
+                ".OOOOOOOOOOOOOOOO.",
+            ])
+        elif acc == "halo":
+            stamp(7, 0, [
+                "..OOOOOOOOOO..",
+                ".OOYYYYYYYYOO.",
+                "OYYO......OYYO",
+                ".OOYYYYYYYYOO.",
+                "..OOOOOOOOOO..",
+            ])
+        elif acc == "headband":
+            stamp(5, 7, [
+                "OOOOOOOOOOOOOOOOOO",
+                "OOAAeeAAAAAAAAAAOO",
+                "OOOOOOOOOOOOOOOOOO",
+            ])
 
     # =========================================================================
     # MINIATURAS AISLADAS PARA EL SELECTOR VISUAL DE ATRIBUTOS (CUADRADOS)
@@ -837,6 +1196,7 @@ class ChibiSpriteRenderer:
         shoe_col = char.get("shoe_color", "#451a03")
         shoe_sh = _shade(shoe_col, 0.75)
         acc_col = char.get("accessory_color", "#ef4444")
+        acc_sh = _shade(acc_col, 0.75)
         acc_hi = _shade(acc_col, 1.25)
 
         palette = {
@@ -854,6 +1214,7 @@ class ChibiSpriteRenderer:
             "Z": shoe_col,
             "z": shoe_sh,
             "A": acc_col,
+            "a": acc_sh,
             "e": acc_hi,
             "G": "#7dd3fc",
             "g": "#e0f2fe",
@@ -930,21 +1291,62 @@ class ChibiSpriteRenderer:
             crop_rect = QRect(6, 18, 16, 12)
 
         elif part_kind == "shoes":
-            # Dibujar SOLO el par de zapatos ampliados
-            shoe_c = "W" if style_id == "sneakers" else "Z"
+            # Dibujar SOLO el par de zapatos ampliados con detalle propio por estilo
             if style_id == "boots":
-                stamp(9, 22, [
+                stamp(9, 21, [
                     "OOOO..OOOO",
+                    "OZZO..OZZO",
                     "OZZO..OZZO",
                     "OZZO..OZZO",
                     "OzzO..OzzO",
                     "OOOOOOOOOO",
                 ])
-            else:
-                stamp(9, 23, [
+            elif style_id == "high_tops":
+                stamp(9, 21, [
                     "OOOO..OOOO",
                     "OZZO..OZZO",
-                    f"O{shoe_c}zO..O{shoe_c}zO",
+                    "OZWZ..OZWZ",
+                    "OZZO..OZZO",
+                    "OWWO..OWWO",
+                    "OOOOOOOOOO",
+                ])
+            elif style_id == "cyber_boots":
+                stamp(9, 21, [
+                    "OOOO..OOOO",
+                    "OZZO..OZZO",
+                    "OAeO..OAeO",
+                    "OZZO..OZZO",
+                    "OAeO..OAeO",
+                    "OOOOOOOOOO",
+                ])
+            elif style_id == "sandals":
+                stamp(9, 23, [
+                    "OOOO..OOOO",
+                    "OKkO..OKkO",
+                    "OZZO..OZZO",
+                    "OzzO..OzzO",
+                    "OOOOOOOOOO",
+                ])
+            elif style_id == "loafers":
+                stamp(9, 22, [
+                    "OOOO..OOOO",
+                    "OZYO..OZYO",
+                    "OZZO..OZZO",
+                    "OzzO..OzzO",
+                    "OOOOOOOOOO",
+                ])
+            elif style_id == "sneakers":
+                stamp(9, 22, [
+                    "OOOO..OOOO",
+                    "OZZO..OZZO",
+                    "OWWO..OWWO",
+                    "OOOOOOOOOO",
+                ])
+            else:
+                stamp(9, 22, [
+                    "OOOO..OOOO",
+                    "OZZO..OZZO",
+                    "OzzO..OzzO",
                     "OOOOOOOOOO",
                 ])
             crop_rect = QRect(7, 20, 14, 9)
