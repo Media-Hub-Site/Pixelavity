@@ -1,7 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
-import sys
-from PyInstaller.utils.hooks import collect_all
 
 datas = [
     ('assets', 'assets'),
@@ -14,12 +12,10 @@ hiddenimports = [
     'core.watcher',
     'core.server',
     'app_qt',
+    'PyQt6.QtCore',
+    'PyQt6.QtGui',
+    'PyQt6.QtWidgets',
 ]
-
-tmp_ret = collect_all('PyQt6')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
 
 sys32 = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32")
 vc_dlls = [
@@ -40,7 +36,15 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'pygame', 'PySide6'],
+    excludes=[
+        'tkinter', 'matplotlib', 'pygame', 'PySide6', 'PIL', 'numpy',
+        'PyQt6.QtWebEngineCore', 'PyQt6.QtWebEngineWidgets', 'PyQt6.QtWebChannel',
+        'PyQt6.QtQuick', 'PyQt6.QtQml', 'PyQt6.QtMultimedia', 'PyQt6.QtPdf',
+        'PyQt6.Qt3DCore', 'PyQt6.QtDesigner', 'PyQt6.QtSql', 'PyQt6.QtBluetooth',
+        'PyQt6.QtNfc', 'PyQt6.QtPositioning', 'PyQt6.QtSensors', 'PyQt6.QtSerialPort',
+        'PyQt6.QtTest', 'PyQt6.QtOpenGL', 'PyQt6.QtOpenGLWidgets', 'PyQt6.QtSvg',
+        'PyQt6.QtNetwork', 'PyQt6.QtPrintSupport', 'PyQt6.QtHelp', 'PyQt6.QtXml',
+    ],
     noarchive=False,
     optimize=0,
 )
