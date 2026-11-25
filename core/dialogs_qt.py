@@ -1,27 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-Pixelavity - Diálogo Creador de Personajes (4 Direcciones) y Menú Constructor por Categorías
-Al estilo Pixel Agents:
-  - Menú constructor organizado por pestañas de categoría:
-      1. 💻 Dispositivos (Computadores, Servidores, Pizarras, Orchestrator, Radar Web, Mesa UI)
-      2. 🪑 Muebles (Estanterías de Libros, Sofás, Barra de Café, Mesas, Archivadores)
-      3. 🪴 Decoración (Plantas, Cactus, Arcade, Dispensador, Alfombras, Lámparas, Trofeos)
-      4. 🎨 Pisos por Cuadrícula (con selector de Modo 1x1 Uno por Uno y Modo Rellenar / Bote)
-      5. 🧱 Paredes por Cuadrícula (Colocar muros 1x1 o abrir puertas/espacios)
-  - Herramientas de cuadrícula: Mover objeto por celdas (col, row), Colocar desde catálogo y Eliminar.
+Pixelavity - Creador de Personajes por Secciones Visuales y Constructor de Oficina con Cuadrados de Diseño
+  - Todos los atributos del personaje (Peinado, Cara, Ropa, Zapatos, Accesorios) están organizados por
+    secciones y muestran cuadrados visuales con SOLO esa pieza pixel-art aislada (sin adivinar por nombre).
+  - Todos los objetos de la oficina (Dispositivos, Muebles, Decoración, Pisos y Paredes) se muestran como
+    cuadrados visuales con el diseño pixel-art real de cada elemento.
 """
 
 import copy
 import random
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List
 
-from PyQt6.QtCore import Qt, QTimer, QRectF
-from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QIcon
+from PyQt6.QtCore import Qt, QTimer, QRectF, QSize
+from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QLineEdit, QComboBox, QListWidget,
-    QListWidgetItem, QFrame, QColorDialog, QMessageBox, QCheckBox,
-    QButtonGroup, QScrollArea
+    QLabel, QPushButton, QLineEdit, QListWidget, QListWidgetItem,
+    QFrame, QColorDialog, QMessageBox, QCheckBox, QButtonGroup,
+    QScrollArea, QStackedWidget
 )
 
 from core.customization import (
@@ -40,11 +36,22 @@ from core.customization import (
 from core.sprites import SPRITE_ENGINE
 
 
+CLOTHING_COLOR_PRESETS = [
+    "#334155", "#1e293b", "#38bdf8", "#0284c7", "#10b981",
+    "#059669", "#f43f5e", "#e11d48", "#f472b6", "#a855f7",
+    "#eab308", "#f97316", "#78350f", "#f8fafc",
+]
+
+SHOE_COLOR_PRESETS = [
+    "#451a03", "#1e293b", "#0f172a", "#be185d", "#0284c7",
+    "#15803d", "#b45309", "#7c2d12", "#6b21a8", "#dc2626",
+]
+
+
 class FourDirPreviewWidget(QWidget):
     """
     Muestra el personaje editado en las 4 direcciones simultáneamente:
-    Adelante (down), Atrás (up), Izquierda (left) y Derecha (right),
-    animando su ciclo de caminata en tiempo real.
+    Adelante (down), Atrás (up), Izquierda (left) y Derecha (right).
     """
 
     def __init__(self, parent=None):
@@ -52,7 +59,7 @@ class FourDirPreviewWidget(QWidget):
         self.character: Dict[str, Any] = {}
         self.walk_frame = 0
         self.animate_walk = True
-        self.setMinimumSize(320, 290)
+        self.setMinimumSize(300, 290)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -104,7 +111,6 @@ class FourDirPreviewWidget(QWidget):
             p.setPen(QPen(QColor("#24334f"), 1))
             p.drawRoundedRect(card_rect, 8, 8)
 
-            # Sombra en el piso
             p.setBrush(QColor(0, 0, 0, 115))
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QRectF(cx - 22, cy + 28, 44, 11))
@@ -124,22 +130,34 @@ class FourDirPreviewWidget(QWidget):
         p.end()
 
 
+# =============================================================================
+# CREADOR DE PERSONAJES CON SECCIONES Y CUADRADOS VISUALES DE DISEÑO AISLADO
+# =============================================================================
 class CharacterCreatorDialog(QDialog):
     """
-    Editor interactivo de personajes para Pixelavity con 12 peinados esculpidos,
-    tonos de piel, expresiones, ropa, zapatos y accesorios en 4 direcciones.
+    Editor visual de personajes organizado por secciones (Peinado, Cara, Ropa, Zapatos, Accesorio).
+    Cada opción se muestra como un cuadrado de diseño pixel-art con SOLO esa parte renderizada.
     """
 
     def __init__(self, manager: CustomizationManager, on_changed: Optional[Callable] = None, parent=None):
         super().__init__(parent)
         self.manager = manager
         self.on_changed = on_changed
-        self.setWindowTitle("Pixelavity · Creador y Personalización de Personajes")
-        self.resize(980, 640)
-        self.setMinimumSize(900, 580)
+        self.setWindowTitle("Pixelavity · Creador Visual de Personajes")
+        self.resize(1040, 660)
+        self.setMinimumSize(960, 600)
 
         self.current_char: Dict[str, Any] = {}
         self._updating_ui = False
+
+        # Mapas de botones cuadrados de diseño por sección: (part_kind, style_id) -> QPushButton
+        self._design_squares: Dict[str, Dict[str, QPushButton]] = {
+            "hair": {},
+            "face": {},
+            "outfit": {},
+            "shoes": {},
+            "accessory": {},
+        }
 
         self._build_ui()
         self._reload_list(select_index=0)
@@ -162,13 +180,14 @@ class CharacterCreatorDialog(QDialog):
                 font-size: 11px;
                 font-weight: bold;
             }
-            QLineEdit, QComboBox {
+            QLineEdit {
                 background-color: #151d2e;
                 color: #ffffff;
                 border: 1px solid #283754;
                 border-radius: 6px;
-                padding: 5px 8px;
+                padding: 6px 10px;
                 font-size: 12px;
+                font-weight: bold;
             }
             QPushButton {
                 background-color: #151d2e;
@@ -182,6 +201,34 @@ class CharacterCreatorDialog(QDialog):
             QPushButton:hover {
                 background-color: #1d2840;
                 border-color: #38bdf8;
+            }
+            QPushButton#SectionTab {
+                background-color: #141c2e;
+                color: #94a3b8;
+                border: 1px solid #22304a;
+                border-radius: 7px;
+                padding: 7px 10px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton#SectionTab:checked {
+                background-color: rgba(56, 189, 248, 45);
+                color: #38bdf8;
+                border: 1px solid #38bdf8;
+            }
+            QPushButton#DesignSquare {
+                background-color: #141d2f;
+                border: 2px solid #24334f;
+                border-radius: 9px;
+                padding: 2px;
+            }
+            QPushButton#DesignSquare:hover {
+                background-color: #1b2740;
+                border-color: #64748b;
+            }
+            QPushButton#DesignSquare:checked {
+                background-color: rgba(56, 189, 248, 35);
+                border: 2px solid #38bdf8;
             }
             QPushButton#PrimaryBtn {
                 background-color: rgba(56, 189, 248, 45);
@@ -215,10 +262,10 @@ class CharacterCreatorDialog(QDialog):
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(14)
 
-        # 1. COLUMNA IZQUIERDA
+        # 1. COLUMNA IZQUIERDA: LISTA DE PERSONAJES
         left_card = QFrame()
         left_card.setObjectName("Card")
-        left_card.setFixedWidth(240)
+        left_card.setFixedWidth(230)
         left_layout = QVBoxLayout(left_card)
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(8)
@@ -228,6 +275,7 @@ class CharacterCreatorDialog(QDialog):
         left_layout.addWidget(lbl_pool)
 
         self.list_chars = QListWidget()
+        self.list_chars.setIconSize(QSize(38, 46))
         self.list_chars.currentRowChanged.connect(self._on_row_selected)
         left_layout.addWidget(self.list_chars, stretch=1)
 
@@ -251,140 +299,295 @@ class CharacterCreatorDialog(QDialog):
 
         root.addWidget(left_card)
 
-        # 2. COLUMNA CENTRAL: VISTA PREVIA 4 DIRECCIONES
+        # 2. COLUMNA CENTRAL: VISTA PREVIA EN 4 DIRECCIONES + NOMBRE
         center_card = QFrame()
         center_card.setObjectName("Card")
         center_layout = QVBoxLayout(center_card)
         center_layout.setContentsMargins(12, 12, 12, 12)
-        center_layout.setSpacing(8)
+        center_layout.setSpacing(10)
 
-        top_prev = QHBoxLayout()
-        lbl_prev = QLabel("🎮 VISTA PREVIA DETALLADA (4 DIRECCIONES)")
-        lbl_prev.setObjectName("SectionTitle")
-        top_prev.addWidget(lbl_prev)
-        top_prev.addStretch()
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel("Nombre:"))
+        self.inp_name = QLineEdit()
+        self.inp_name.textEdited.connect(self._on_name_edited)
+        name_row.addWidget(self.inp_name, stretch=1)
 
-        self.chk_anim = QCheckBox("Animar caminata")
+        self.chk_anim = QCheckBox("Caminar")
         self.chk_anim.setChecked(True)
         self.chk_anim.toggled.connect(self._toggle_walk_anim)
-        top_prev.addWidget(self.chk_anim)
-        center_layout.addLayout(top_prev)
+        name_row.addWidget(self.chk_anim)
+        center_layout.addLayout(name_row)
 
         self.preview_widget = FourDirPreviewWidget()
         center_layout.addWidget(self.preview_widget, stretch=1)
 
         hint_lbl = QLabel(
-            "💡 Pixelavity asigna tus personajes al azar a cada agente activo sin repetirlos. "
-            "Solo se repite alguno cuando hay más agentes trabajando simultáneamente que personajes en tu lista."
+            "💡 Selecciona una sección a la derecha (Peinado, Cara, Ropa, Zapatos o Accesorio) "
+            "y haz clic sobre cualquier cuadrado visual para aplicar ese diseño al instante."
         )
         hint_lbl.setWordWrap(True)
-        hint_lbl.setStyleSheet("color: #8b9bb4; font-size: 11px; padding: 6px; background: #131b2e; border-radius: 6px;")
+        hint_lbl.setStyleSheet("color: #8b9bb4; font-size: 11px; padding: 7px; background: #131b2e; border-radius: 6px;")
         center_layout.addWidget(hint_lbl)
 
         root.addWidget(center_card, stretch=1)
 
-        # 3. COLUMNA DERECHA: ATRIBUTOS
+        # 3. COLUMNA DERECHA: SECCIONES DE ATRIBUTOS CON CUADRADOS VISUALES
         right_card = QFrame()
         right_card.setObjectName("Card")
-        right_card.setFixedWidth(345)
+        right_card.setFixedWidth(415)
         right_layout = QVBoxLayout(right_card)
-        right_layout.setContentsMargins(14, 12, 14, 12)
+        right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(10)
 
-        lbl_edit = QLabel("✨ PERSONALIZAR ATRIBUTOS")
-        lbl_edit.setObjectName("SectionTitle")
-        right_layout.addWidget(lbl_edit)
+        lbl_sec = QLabel("🎨 SECCIONES DE DISEÑO")
+        lbl_sec.setObjectName("SectionTitle")
+        right_layout.addWidget(lbl_sec)
 
-        form = QGridLayout()
-        form.setHorizontalSpacing(10)
-        form.setVerticalSpacing(10)
+        # Barra de pestañas de sección
+        tabs_row = QHBoxLayout()
+        tabs_row.setSpacing(5)
+        self.sec_group = QButtonGroup(self)
+        self.sec_group.setExclusive(True)
 
-        form.addWidget(QLabel("Nombre:"), 0, 0)
-        self.inp_name = QLineEdit()
-        self.inp_name.textEdited.connect(self._on_field_edited)
-        form.addWidget(self.inp_name, 0, 1, 1, 2)
+        sections = [
+            (0, "💇 Peinado"),
+            (1, "🙂 Cara"),
+            (2, "👕 Ropa"),
+            (3, "👟 Zapatos"),
+            (4, "🎩 Accesorio"),
+        ]
+        for idx, title in sections:
+            b = QPushButton(title)
+            b.setObjectName("SectionTab")
+            b.setCheckable(True)
+            if idx == 0:
+                b.setChecked(True)
+            b.clicked.connect(lambda checked=False, i=idx: self.stack.setCurrentIndex(i))
+            self.sec_group.addButton(b, idx)
+            tabs_row.addWidget(b)
+        right_layout.addLayout(tabs_row)
 
-        form.addWidget(QLabel("Piel:"), 1, 0)
-        self.cmb_skin = QComboBox()
-        for st in SKIN_TONES:
-            self.cmb_skin.addItem(st["name"], st["color"])
-        self.cmb_skin.currentIndexChanged.connect(self._on_skin_preset_changed)
-        form.addWidget(self.cmb_skin, 1, 1)
-        self.btn_skin_col = QPushButton("Color")
-        self.btn_skin_col.clicked.connect(lambda: self._pick_color("skin_color", self.btn_skin_col))
-        form.addWidget(self.btn_skin_col, 1, 2)
-
-        form.addWidget(QLabel("Cara:"), 2, 0)
-        self.cmb_face = QComboBox()
-        for fs in FACE_STYLES:
-            self.cmb_face.addItem(fs["name"], fs["id"])
-        self.cmb_face.currentIndexChanged.connect(self._on_field_edited)
-        form.addWidget(self.cmb_face, 2, 1, 1, 2)
-
-        form.addWidget(QLabel("Peinado:"), 3, 0)
-        self.cmb_hair = QComboBox()
-        for hs in HAIR_STYLES:
-            self.cmb_hair.addItem(hs["name"], hs["id"])
-        self.cmb_hair.currentIndexChanged.connect(self._on_field_edited)
-        form.addWidget(self.cmb_hair, 3, 1)
-        self.btn_hair_col = QPushButton("Color")
-        self.btn_hair_col.clicked.connect(lambda: self._pick_color("hair_color", self.btn_hair_col))
-        form.addWidget(self.btn_hair_col, 3, 2)
-
-        form.addWidget(QLabel("Ropa:"), 4, 0)
-        self.cmb_outfit = QComboBox()
-        for os_item in OUTFIT_STYLES:
-            self.cmb_outfit.addItem(os_item["name"], os_item["id"])
-        self.cmb_outfit.currentIndexChanged.connect(self._on_field_edited)
-        form.addWidget(self.cmb_outfit, 4, 1, 1, 2)
-
-        form.addWidget(QLabel("Colores Ropa:"), 5, 0)
-        self.btn_top_col = QPushButton("Superior")
-        self.btn_top_col.clicked.connect(lambda: self._pick_color("top_color", self.btn_top_col))
-        form.addWidget(self.btn_top_col, 5, 1)
-        self.btn_bot_col = QPushButton("Inferior")
-        self.btn_bot_col.clicked.connect(lambda: self._pick_color("bottom_color", self.btn_bot_col))
-        form.addWidget(self.btn_bot_col, 5, 2)
-
-        form.addWidget(QLabel("Zapatos:"), 6, 0)
-        self.cmb_shoes = QComboBox()
-        for sh in SHOE_STYLES:
-            self.cmb_shoes.addItem(sh["name"], sh["id"])
-        self.cmb_shoes.currentIndexChanged.connect(self._on_field_edited)
-        form.addWidget(self.cmb_shoes, 6, 1)
-        self.btn_shoe_col = QPushButton("Color")
-        self.btn_shoe_col.clicked.connect(lambda: self._pick_color("shoe_color", self.btn_shoe_col))
-        form.addWidget(self.btn_shoe_col, 6, 2)
-
-        form.addWidget(QLabel("Accesorio:"), 7, 0)
-        self.cmb_acc = QComboBox()
-        for ac in ACCESSORY_STYLES:
-            self.cmb_acc.addItem(ac["name"], ac["id"])
-        self.cmb_acc.currentIndexChanged.connect(self._on_field_edited)
-        form.addWidget(self.cmb_acc, 7, 1)
-        self.btn_acc_col = QPushButton("Color")
-        self.btn_acc_col.clicked.connect(lambda: self._pick_color("accessory_color", self.btn_acc_col))
-        form.addWidget(self.btn_acc_col, 7, 2)
-
-        right_layout.addLayout(form)
-        right_layout.addStretch()
+        # Contenedor por páginas para cada sección
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._build_hair_page())
+        self.stack.addWidget(self._build_face_page())
+        self.stack.addWidget(self._build_outfit_page())
+        self.stack.addWidget(self._build_shoes_page())
+        self.stack.addWidget(self._build_accessory_page())
+        right_layout.addWidget(self.stack, stretch=1)
 
         btn_close = QPushButton("✓ Guardar y Volver a la Oficina")
         btn_close.setObjectName("PrimaryBtn")
-        btn_close.setMinimumHeight(36)
+        btn_close.setMinimumHeight(38)
         btn_close.clicked.connect(self.accept)
         right_layout.addWidget(btn_close)
 
         root.addWidget(right_card)
 
+    def _create_design_grid(
+        self,
+        part_kind: str,
+        styles_list: List[Dict[str, str]],
+        char_field: str,
+        cols: int = 4,
+    ) -> QGridLayout:
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
+
+        for idx, item in enumerate(styles_list):
+            sid = item["id"]
+            sname = item["name"]
+            btn = QPushButton()
+            btn.setObjectName("DesignSquare")
+            btn.setCheckable(True)
+            btn.setFixedSize(78, 78)
+            btn.setIconSize(QSize(64, 64))
+            btn.setToolTip(sname)
+            btn.clicked.connect(lambda checked=False, f=char_field, v=sid: self._select_style(f, v))
+            self._design_squares[part_kind][sid] = btn
+            grid.addWidget(btn, idx // cols, idx % cols)
+
+        return grid
+
+    def _create_color_swatches_row(self, title: str, color_key: str, hex_list: List[str]) -> QWidget:
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(0, 4, 0, 4)
+        v.setSpacing(6)
+
+        lbl = QLabel(title)
+        lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold;")
+        v.addWidget(lbl)
+
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        for hx in hex_list[:9]:
+            sw = QPushButton()
+            sw.setFixedSize(28, 28)
+            sw.setToolTip(hx)
+            sw.setStyleSheet(
+                f"background-color: {hx}; border: 2px solid #2b3a55; border-radius: 6px;"
+            )
+            sw.clicked.connect(lambda checked=False, k=color_key, c=hx: self._set_color(k, c))
+            row.addWidget(sw)
+
+        btn_custom = QPushButton("🎨")
+        btn_custom.setFixedSize(32, 28)
+        btn_custom.setToolTip("Elegir color personalizado...")
+        btn_custom.clicked.connect(lambda checked=False, k=color_key: self._pick_custom_color(k))
+        row.addWidget(btn_custom)
+        row.addStretch()
+
+        v.addLayout(row)
+        return w
+
+    def _build_hair_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Selecciona el diseño del pelo (vista aislada):")
+        lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+        layout.addWidget(lbl)
+
+        layout.addLayout(self._create_design_grid("hair", HAIR_STYLES, "hair_style", cols=4))
+        layout.addWidget(self._create_color_swatches_row(
+            "Color del Pelo:",
+            "hair_color",
+            [c["color"] for c in HAIR_COLORS],
+        ))
+        layout.addStretch()
+        return page
+
+    def _build_face_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Selecciona la expresión de la cara:")
+        lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+        layout.addWidget(lbl)
+
+        layout.addLayout(self._create_design_grid("face", FACE_STYLES, "face_style", cols=4))
+        layout.addWidget(self._create_color_swatches_row(
+            "Tono de Piel:",
+            "skin_color",
+            [s["color"] for s in SKIN_TONES],
+        ))
+        layout.addStretch()
+        return page
+
+    def _build_outfit_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setSpacing(8)
+
+        lbl = QLabel("Selecciona el diseño de la ropa (vista aislada):")
+        lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+        layout.addWidget(lbl)
+
+        layout.addLayout(self._create_design_grid("outfit", OUTFIT_STYLES, "outfit_style", cols=4))
+        layout.addWidget(self._create_color_swatches_row(
+            "Color Superior (Camisa / Chaqueta / Capa):",
+            "top_color",
+            CLOTHING_COLOR_PRESETS[:9],
+        ))
+        layout.addWidget(self._create_color_swatches_row(
+            "Color Inferior (Pantalón / Falda / Overol):",
+            "bottom_color",
+            CLOTHING_COLOR_PRESETS[3:12],
+        ))
+        layout.addStretch()
+        return page
+
+    def _build_shoes_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Selecciona el diseño de los zapatos (vista aislada):")
+        lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+        layout.addWidget(lbl)
+
+        layout.addLayout(self._create_design_grid("shoes", SHOE_STYLES, "shoe_style", cols=4))
+        layout.addWidget(self._create_color_swatches_row(
+            "Color del Calzado:",
+            "shoe_color",
+            SHOE_COLOR_PRESETS,
+        ))
+        layout.addStretch()
+        return page
+
+    def _build_accessory_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Selecciona el sombrero o accesorio (vista aislada):")
+        lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+        layout.addWidget(lbl)
+
+        layout.addLayout(self._create_design_grid("accessory", ACCESSORY_STYLES, "accessory", cols=4))
+        layout.addWidget(self._create_color_swatches_row(
+            "Color del Accesorio / Cinta / Detalle:",
+            "accessory_color",
+            CLOTHING_COLOR_PRESETS[2:11],
+        ))
+        layout.addStretch()
+        return page
+
+    def _refresh_design_squares(self):
+        """Actualiza los íconos de todos los cuadrados visuales con los colores del personaje actual."""
+        if not self.current_char:
+            return
+        ch = self.current_char
+        field_by_kind = {
+            "hair": "hair_style",
+            "face": "face_style",
+            "outfit": "outfit_style",
+            "shoes": "shoe_style",
+            "accessory": "accessory",
+        }
+        for kind, btn_map in self._design_squares.items():
+            active_val = ch.get(field_by_kind[kind])
+            for sid, btn in btn_map.items():
+                pix = SPRITE_ENGINE.get_part_preview_pixmap(kind, sid, ch, box_size=62)
+                btn.setIcon(QIcon(pix))
+                btn.setChecked(sid == active_val)
+
+    def _select_style(self, field: str, style_id: str):
+        if self._updating_ui or not self.current_char:
+            return
+        self.current_char[field] = style_id
+        self._persist_current()
+
+    def _set_color(self, color_key: str, hex_color: str):
+        if self._updating_ui or not self.current_char:
+            return
+        self.current_char[color_key] = hex_color
+        self._persist_current()
+
+    def _pick_custom_color(self, color_key: str):
+        initial = QColor(self.current_char.get(color_key, "#38bdf8"))
+        chosen = QColorDialog.getColor(initial, self, "Seleccionar Color")
+        if chosen.isValid():
+            self.current_char[color_key] = chosen.name()
+            self._persist_current()
+
+    def _on_name_edited(self):
+        if self._updating_ui or not self.current_char:
+            return
+        self.current_char["name"] = self.inp_name.text().strip() or "Personaje"
+        self._persist_current()
+
     def _toggle_walk_anim(self, checked: bool):
         self.preview_widget.animate_walk = checked
-
-    def _style_color_btn(self, btn: QPushButton, hex_col: str):
-        btn.setStyleSheet(
-            f"background-color: {hex_col}; color: #ffffff; "
-            f"border: 2px solid #cbd5e1; border-radius: 5px; font-weight: bold;"
-        )
 
     def _reload_list(self, select_index: int = 0):
         self._updating_ui = True
@@ -408,69 +611,17 @@ class CharacterCreatorDialog(QDialog):
         if row >= len(chars):
             return
         self.current_char = copy.deepcopy(chars[row])
-        self._load_char_into_form()
-
-    def _load_char_into_form(self):
         self._updating_ui = True
-        ch = self.current_char
-        self.inp_name.setText(ch.get("name", "Personaje"))
-
-        self._set_combo_by_data(self.cmb_skin, ch.get("skin_color", "#ffcca8"))
-        self._set_combo_by_data(self.cmb_face, ch.get("face_style", "smile"))
-        self._set_combo_by_data(self.cmb_hair, ch.get("hair_style", "short_parted"))
-        self._set_combo_by_data(self.cmb_outfit, ch.get("outfit_style", "suit_tie"))
-        self._set_combo_by_data(self.cmb_shoes, ch.get("shoe_style", "classic"))
-        self._set_combo_by_data(self.cmb_acc, ch.get("accessory", "none"))
-
-        self._style_color_btn(self.btn_skin_col, ch.get("skin_color", "#ffcca8"))
-        self._style_color_btn(self.btn_hair_col, ch.get("hair_color", "#eab308"))
-        self._style_color_btn(self.btn_top_col, ch.get("top_color", "#334155"))
-        self._style_color_btn(self.btn_bot_col, ch.get("bottom_color", "#1e293b"))
-        self._style_color_btn(self.btn_shoe_col, ch.get("shoe_color", "#451a03"))
-        self._style_color_btn(self.btn_acc_col, ch.get("accessory_color", "#ef4444"))
-
-        self.preview_widget.set_character(ch)
+        self.inp_name.setText(self.current_char.get("name", "Personaje"))
+        self.preview_widget.set_character(self.current_char)
+        self._refresh_design_squares()
         self._updating_ui = False
-
-    def _set_combo_by_data(self, cmb: QComboBox, val: Any):
-        for i in range(cmb.count()):
-            if cmb.itemData(i) == val:
-                cmb.setCurrentIndex(i)
-                return
-
-    def _on_skin_preset_changed(self):
-        if self._updating_ui:
-            return
-        col = self.cmb_skin.currentData()
-        if col:
-            self.current_char["skin_color"] = col
-            self._style_color_btn(self.btn_skin_col, col)
-            self._persist_current()
-
-    def _pick_color(self, key: str, btn: QPushButton):
-        initial = QColor(self.current_char.get(key, "#38bdf8"))
-        chosen = QColorDialog.getColor(initial, self, "Seleccionar Color")
-        if chosen.isValid():
-            hex_c = chosen.name()
-            self.current_char[key] = hex_c
-            self._style_color_btn(btn, hex_c)
-            self._persist_current()
-
-    def _on_field_edited(self):
-        if self._updating_ui or not self.current_char:
-            return
-        self.current_char["name"] = self.inp_name.text().strip() or "Personaje"
-        self.current_char["face_style"] = self.cmb_face.currentData()
-        self.current_char["hair_style"] = self.cmb_hair.currentData()
-        self.current_char["outfit_style"] = self.cmb_outfit.currentData()
-        self.current_char["shoe_style"] = self.cmb_shoes.currentData()
-        self.current_char["accessory"] = self.cmb_acc.currentData()
-        self._persist_current()
 
     def _persist_current(self):
         saved = self.manager.save_character(self.current_char)
         self.current_char = saved
         self.preview_widget.set_character(saved)
+        self._refresh_design_squares()
         row = self.list_chars.currentRow()
         if row >= 0:
             item = self.list_chars.item(row)
@@ -493,7 +644,7 @@ class CharacterCreatorDialog(QDialog):
             "top_color": random.choice(palette),
             "bottom_color": random.choice(["#1e293b", "#334155", "#1e3a8a", "#3f2e21", "#4c1d95"]),
             "shoe_style": random.choice(SHOE_STYLES)["id"],
-            "shoe_color": random.choice(["#1e293b", "#451a03", "#be185d", "#0284c7"]),
+            "shoe_color": random.choice(SHOE_COLOR_PRESETS),
             "accessory": random.choice(ACCESSORY_STYLES)["id"],
             "accessory_color": random.choice(palette),
         }
@@ -515,11 +666,10 @@ class CharacterCreatorDialog(QDialog):
             "top_color": random.choice(palette),
             "bottom_color": random.choice(["#1e293b", "#334155", "#1e3a8a", "#3f2e21", "#581c87"]),
             "shoe_style": random.choice(SHOE_STYLES)["id"],
-            "shoe_color": random.choice(["#1e293b", "#451a03", "#be185d", "#0284c7"]),
+            "shoe_color": random.choice(SHOE_COLOR_PRESETS),
             "accessory": random.choice(ACCESSORY_STYLES)["id"],
             "accessory_color": random.choice(palette),
         })
-        self._load_char_into_form()
         self._persist_current()
 
     def _delete_current(self):
@@ -541,25 +691,13 @@ class CharacterCreatorDialog(QDialog):
 
 
 # =============================================================================
-# MENÚ CONSTRUCTOR DE OFICINA POR CATEGORÍAS Y CUADRÍCULAS (ESTILO PIXEL AGENTS)
+# MENÚ CONSTRUCTOR DE OFICINA CON CUADRADOS VISUALES PIXEL-ART POR CATEGORÍA
 # =============================================================================
 class OfficeBuilderDock(QFrame):
     """
     Panel constructor de oficina por cuadrículas (32x19 celdas).
-    Organizado en pestañas de categoría:
-      - 💻 Dispositivos
-      - 🪑 Muebles
-      - 🪴 Decoración
-      - 🎨 Pisos (con selector de Modo 1x1 Uno por Uno y Modo Rellenar / Bote)
-      - 🧱 Paredes (Colocar muro 1x1 o borrar muro 1x1)
-    Y modos de herramienta sobre la cuadrícula:
-      - "move":         Mover objetos de una cuadrícula a otra
-      - "place_object": Colocar el dispositivo/mueble/decoración elegido en la cuadrícula clicada
-      - "floor_1x1":    Pintar piso cuadrícula por cuadrícula (1x1)
-      - "floor_fill":   Rellenar piso (Flood-Fill en toda el área/habitación conectada)
-      - "wall_place":   Colocar bloque de pared 1x1 en la cuadrícula
-      - "wall_erase":   Borrar bloque de pared 1x1 en la cuadrícula
-      - "delete":       Eliminar objeto o pared de la cuadrícula
+    Muestra cada dispositivo, mueble, decoración, piso o pared como un CUADRADO VISUAL
+    con el diseño pixel-art real del elemento (sin listas de texto).
     """
 
     def __init__(self, manager: CustomizationManager, on_state_changed: Callable, parent=None):
@@ -569,11 +707,11 @@ class OfficeBuilderDock(QFrame):
         self.setObjectName("BuilderDock")
 
         self.active_category: str = "devices"
-        self.tool_mode: str = "move"  # move | place_object | floor_1x1 | floor_fill | wall_place | wall_erase | delete
+        self.tool_mode: str = "place_object"
         self.selected_object_type: str = "computer_desk"
         self.selected_floor_material: str = "walnut_wood"
         self.selected_wall_material: str = "dark_tech"
-        self.floor_paint_submode: str = "floor_1x1"  # "floor_1x1" | "floor_fill"
+        self.floor_paint_submode: str = "floor_1x1"
 
         self._item_buttons: Dict[str, QPushButton] = {}
         self._build_ui()
@@ -614,32 +752,27 @@ class OfficeBuilderDock(QFrame):
                 color: #fcd34d;
                 border-color: #fbbf24;
             }
-            QPushButton#CatalogCard {
-                background-color: #162033;
-                color: #e2e8f0;
-                border: 1px solid #263654;
-                border-radius: 7px;
-                padding: 6px 11px;
-                font-size: 11px;
-                font-weight: 600;
-                text-align: left;
+            QPushButton#TileSquare {
+                background-color: #141d2f;
+                border: 2px solid #24334f;
+                border-radius: 8px;
+                padding: 2px;
             }
-            QPushButton#CatalogCard:hover {
-                background-color: #1d2a42;
-                border-color: #38bdf8;
+            QPushButton#TileSquare:hover {
+                background-color: #1c2842;
+                border-color: #64748b;
             }
-            QPushButton#CatalogCard:checked {
-                background-color: rgba(52, 211, 153, 38);
-                color: #34d399;
-                border: 1px solid #34d399;
+            QPushButton#TileSquare:checked {
+                background-color: rgba(52, 211, 153, 35);
+                border: 2px solid #34d399;
             }
         """)
 
         main_v = QVBoxLayout(self)
         main_v.setContentsMargins(10, 8, 10, 8)
-        main_v.setSpacing(7)
+        main_v.setSpacing(6)
 
-        # FILA 1: PESTAÑAS DE CATEGORÍAS + HERRAMIENTAS DE CUADRÍCULA
+        # FILA 1: PESTAÑAS DE CATEGORÍAS + MODOS DE CUADRÍCULA
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
 
@@ -653,7 +786,6 @@ class OfficeBuilderDock(QFrame):
             ("floors",      "🎨 Pisos"),
             ("walls",       "🧱 Paredes"),
         ]
-        self.cat_buttons: Dict[str, QPushButton] = {}
         for cid, clabel in categories:
             btn = QPushButton(clabel)
             btn.setObjectName("CatTab")
@@ -662,20 +794,18 @@ class OfficeBuilderDock(QFrame):
                 btn.setChecked(True)
             btn.clicked.connect(lambda checked=False, c=cid: self._populate_category(c))
             self.cat_group.addButton(btn)
-            self.cat_buttons[cid] = btn
             top_row.addWidget(btn)
 
-        top_row.addSpacing(12)
+        top_row.addSpacing(10)
 
-        # Modos específicos de Piso (visibles o activos al pintar pisos)
-        self.btn_floor_1x1 = QPushButton("🖌️ Piso: 1x1 (Uno por uno)")
+        self.btn_floor_1x1 = QPushButton("🖌️ Piso 1x1 (Uno por uno)")
         self.btn_floor_1x1.setObjectName("ToolBtn")
         self.btn_floor_1x1.setCheckable(True)
         self.btn_floor_1x1.setChecked(True)
         self.btn_floor_1x1.clicked.connect(lambda: self._set_floor_submode("floor_1x1"))
         top_row.addWidget(self.btn_floor_1x1)
 
-        self.btn_floor_fill = QPushButton("🪣 Piso: Rellenar Zona")
+        self.btn_floor_fill = QPushButton("🪣 Piso Rellenar")
         self.btn_floor_fill.setObjectName("ToolBtn")
         self.btn_floor_fill.setCheckable(True)
         self.btn_floor_fill.clicked.connect(lambda: self._set_floor_submode("floor_fill"))
@@ -683,39 +813,70 @@ class OfficeBuilderDock(QFrame):
 
         top_row.addStretch()
 
-        # Herramientas generales de cuadrícula
-        self.btn_tool_move = QPushButton("🖐️ Mover en Cuadrícula")
+        self.lbl_selected_info = QLabel("")
+        self.lbl_selected_info.setStyleSheet("color: #38bdf8; font-family: Consolas; font-size: 11px; font-weight: bold;")
+        top_row.addWidget(self.lbl_selected_info)
+
+        top_row.addSpacing(8)
+
+        self.btn_tool_move = QPushButton("🖐️ Mover")
         self.btn_tool_move.setObjectName("ToolBtn")
         self.btn_tool_move.setCheckable(True)
+        self.btn_tool_move.setToolTip("Mover cualquier objeto existente de una cuadrícula a otra")
         self.btn_tool_move.clicked.connect(lambda: self._set_explicit_tool("move"))
         top_row.addWidget(self.btn_tool_move)
 
-        self.btn_tool_del = QPushButton("🗑️ Borrador")
+        self.btn_tool_del = QPushButton("🗑️ Borrar")
         self.btn_tool_del.setObjectName("ToolBtn")
         self.btn_tool_del.setCheckable(True)
+        self.btn_tool_del.setToolTip("Eliminar objeto o pared de la cuadrícula clicada")
         self.btn_tool_del.clicked.connect(lambda: self._set_explicit_tool("delete"))
         top_row.addWidget(self.btn_tool_del)
 
-        btn_reset = QPushButton("↺ Restaurar Mapa")
+        btn_reset = QPushButton("↺ Restaurar")
         btn_reset.setObjectName("ToolBtn")
+        btn_reset.setToolTip("Restaurar el mapa de la oficina por defecto")
         btn_reset.clicked.connect(self._reset_map)
         top_row.addWidget(btn_reset)
 
         main_v.addLayout(top_row)
 
-        # FILA 2: CARRUSEL HORIZONTAL DE ÍTEMS DE LA CATEGORÍA SELECCIONADA
+        # FILA 2: CUADRADOS VISUALES DE DISEÑO PIXEL-ART
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(48)
+        scroll.setFixedHeight(74)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         self.items_container = QWidget()
         self.items_layout = QHBoxLayout(self.items_container)
-        self.items_layout.setContentsMargins(0, 2, 0, 2)
-        self.items_layout.setSpacing(6)
+        self.items_layout.setContentsMargins(2, 2, 2, 2)
+        self.items_layout.setSpacing(8)
         scroll.setWidget(self.items_container)
         main_v.addWidget(scroll)
+
+    def _make_square_button(self, pix: QPixmap, tooltip: str, badge_text: str = "") -> QPushButton:
+        # Si hay etiqueta de tamaño en cuadrículas (ej. "2x1"), dibujarla discretamente en la esquina del ícono
+        if badge_text:
+            composed = QPixmap(pix.size())
+            composed.fill(Qt.GlobalColor.transparent)
+            p = QPainter(composed)
+            p.drawPixmap(0, 0, pix)
+            p.fillRect(composed.width() - 22, composed.height() - 13, 21, 12, QColor(9, 13, 22, 215))
+            p.setPen(QColor("#94a3b8"))
+            p.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
+            p.drawText(QRectF(composed.width() - 22, composed.height() - 13, 21, 12), Qt.AlignmentFlag.AlignCenter, badge_text)
+            p.end()
+            pix = composed
+
+        btn = QPushButton()
+        btn.setObjectName("TileSquare")
+        btn.setCheckable(True)
+        btn.setFixedSize(64, 64)
+        btn.setIconSize(QSize(54, 54))
+        btn.setIcon(QIcon(pix))
+        btn.setToolTip(tooltip)
+        return btn
 
     def _sync_tool_buttons(self):
         self.btn_tool_move.setChecked(self.tool_mode == "move")
@@ -736,6 +897,7 @@ class OfficeBuilderDock(QFrame):
         self.tool_mode = tmode
         for b in self._item_buttons.values():
             b.setChecked(False)
+        self.lbl_selected_info.setText("🖐️ Mover en Cuadrícula" if tmode == "move" else "🗑️ Borrar de Cuadrícula")
         self._sync_tool_buttons()
         self.on_state_changed()
 
@@ -754,10 +916,9 @@ class OfficeBuilderDock(QFrame):
                     continue
                 if first_key is None:
                     first_key = okey
-                size_tag = f"[{spec['tile_w']}x{spec['tile_h']}]"
-                btn = QPushButton(f"{spec['icon']} {spec['name']} {size_tag}")
-                btn.setObjectName("CatalogCard")
-                btn.setCheckable(True)
+                size_tag = f"{spec['tile_w']}x{spec['tile_h']}"
+                pix = SPRITE_ENGINE.get_office_preview_pixmap(category_id, okey, spec, box_size=54)
+                btn = self._make_square_button(pix, f"{spec['name']} ({size_tag} cuadrículas)", badge_text=size_tag)
                 btn.clicked.connect(lambda checked=False, k=okey: self._select_object_item(k))
                 self.items_layout.addWidget(btn)
                 self._item_buttons[okey] = btn
@@ -771,12 +932,8 @@ class OfficeBuilderDock(QFrame):
             for fkey, fspec in FLOOR_MATERIALS.items():
                 if first_mat is None:
                     first_mat = fkey
-                btn = QPushButton(f"⬛ {fspec['name']}")
-                btn.setObjectName("CatalogCard")
-                btn.setCheckable(True)
-                btn.setStyleSheet(
-                    f"QPushButton#CatalogCard {{ border-left: 5px solid {fspec['colorA']}; }}"
-                )
+                pix = SPRITE_ENGINE.get_office_preview_pixmap("floors", fkey, fspec, box_size=54)
+                btn = self._make_square_button(pix, f"Piso: {fspec['name']}")
                 btn.clicked.connect(lambda checked=False, k=fkey: self._select_floor_item(k))
                 self.items_layout.addWidget(btn)
                 self._item_buttons[fkey] = btn
@@ -787,16 +944,14 @@ class OfficeBuilderDock(QFrame):
 
         elif category_id == "walls":
             for wkey, wspec in WALL_MATERIALS.items():
-                btn = QPushButton(f"🧱 {wspec['name']} [1x1]")
-                btn.setObjectName("CatalogCard")
-                btn.setCheckable(True)
+                pix = SPRITE_ENGINE.get_office_preview_pixmap("walls", wkey, wspec, box_size=54)
+                btn = self._make_square_button(pix, f"Pared: {wspec['name']} (1x1)", badge_text="1x1")
                 btn.clicked.connect(lambda checked=False, k=wkey: self._select_wall_item(k))
                 self.items_layout.addWidget(btn)
                 self._item_buttons[wkey] = btn
 
-            btn_erase_wall = QPushButton("🚪 Abrir Puerta / Borrar Pared [1x1]")
-            btn_erase_wall.setObjectName("CatalogCard")
-            btn_erase_wall.setCheckable(True)
+            pix_erase = SPRITE_ENGINE.get_office_preview_pixmap("walls", "__erase_wall__", {}, box_size=54)
+            btn_erase_wall = self._make_square_button(pix_erase, "Abrir Puerta / Borrar Pared (1x1)", badge_text="DEL")
             btn_erase_wall.clicked.connect(self._select_wall_eraser)
             self.items_layout.addWidget(btn_erase_wall)
             self._item_buttons["__erase_wall__"] = btn_erase_wall
@@ -809,6 +964,8 @@ class OfficeBuilderDock(QFrame):
         self.tool_mode = "place_object"
         for k, b in self._item_buttons.items():
             b.setChecked(k == obj_key)
+        spec = OBJECT_CATALOG.get(obj_key, {})
+        self.lbl_selected_info.setText(f"{spec.get('name', obj_key)} [{spec.get('tile_w', 1)}x{spec.get('tile_h', 1)}]")
         self._sync_tool_buttons()
         self.on_state_changed()
 
@@ -817,6 +974,8 @@ class OfficeBuilderDock(QFrame):
         self.tool_mode = self.floor_paint_submode
         for k, b in self._item_buttons.items():
             b.setChecked(k == mat_key)
+        fspec = FLOOR_MATERIALS.get(mat_key, {})
+        self.lbl_selected_info.setText(f"Piso: {fspec.get('name', mat_key)}")
         self._sync_tool_buttons()
         self.on_state_changed()
 
@@ -825,6 +984,8 @@ class OfficeBuilderDock(QFrame):
         self.tool_mode = "wall_place"
         for k, b in self._item_buttons.items():
             b.setChecked(k == wall_key)
+        wspec = WALL_MATERIALS.get(wall_key, {})
+        self.lbl_selected_info.setText(f"Pared: {wspec.get('name', wall_key)}")
         self._sync_tool_buttons()
         self.on_state_changed()
 
@@ -832,6 +993,7 @@ class OfficeBuilderDock(QFrame):
         self.tool_mode = "wall_erase"
         for k, b in self._item_buttons.items():
             b.setChecked(k == "__erase_wall__")
+        self.lbl_selected_info.setText("Abrir Puerta / Borrar Pared [1x1]")
         self._sync_tool_buttons()
         self.on_state_changed()
 
