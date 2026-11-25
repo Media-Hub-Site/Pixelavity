@@ -21,14 +21,14 @@ import time
 import random
 from typing import Dict, List, Optional, Any, Tuple
 
-from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF
+from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF, QSize
 from PyQt6.QtGui import (
     QPainter, QColor, QPen, QFont, QFontMetrics, QIcon
 )
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QListWidget, QListWidgetItem, QFrame,
-    QSizePolicy, QSplitter, QMessageBox
+    QSizePolicy, QSplitter, QMessageBox, QDialog, QFileDialog
 )
 
 if getattr(sys, "frozen", False):
@@ -91,6 +91,8 @@ class QtAgentEntity:
         self.is_walking = False
         self.walk_frame = 0
         self.walk_timer = 0.0
+        self.anim_frame = random.randint(0, 3)
+        self.anim_timer = 0.0
         self.waypoints: List[Tuple[float, float, Optional[str]]] = []
         self.action_queue: List[Dict[str, Any]] = []
         self.hold_timer = 0.0
@@ -101,6 +103,7 @@ class QtAgentEntity:
         self.current_station = init_st
 
         self.assigned_device_id: Optional[str] = None
+        self.assigned_device_type: Optional[str] = None
         self.target_col: int = 25
         self.target_row: int = 15
         self.target_x: float = 25 * TILE_SIZE + TILE_SIZE / 2
@@ -165,6 +168,7 @@ class QtAgentEntity:
         new_face = alloc.get("face", "up")
 
         self.assigned_device_id = alloc.get("device_id")
+        self.assigned_device_type = alloc.get("device_type")
         self.role = alloc.get("role", "primary")
         self.is_collaborating = bool(alloc.get("is_collaborating", False))
         self.partner_name = alloc.get("partner_name")
@@ -212,6 +216,31 @@ class QtAgentEntity:
         })
         if len(self.action_queue) > 6:
             self.action_queue.pop(0)
+
+    def get_current_action(self) -> Tuple[str, float]:
+        """Devuelve (nombre_animación, segundos_por_frame) según la estación y rol del agente."""
+        if self.is_walking:
+            return ("walk", 0.12)
+        if self.role == "collaborator" and self.current_station != "lounge":
+            if self.current_station == "library":
+                return ("reading", 0.38)
+            return ("thinking", 0.40)
+
+        if self.current_station == "lounge":
+            if self.assigned_device_type == "coffee_bar":
+                return ("coffee_standing", 0.55)
+            return ("relaxing", 0.55)
+
+        mapping = {
+            "coding_desk":      ("typing_seated", 0.14),
+            "library":          ("reading",       0.40),
+            "strategy_board":   ("thinking",      0.42),
+            "server_lab":       ("terminal",      0.16),
+            "web_station":      ("browsing",      0.26),
+            "art_studio":       ("painting",      0.26),
+            "orchestrator_hub": ("orchestrating", 0.28),
+        }
+        return mapping.get(self.current_station, ("idle", 0.55))
 
     def update(self, dt: float, particles: List[Dict[str, Any]]) -> bool:
         """Devuelve True si cambió de estación y requiere recalcular posiciones."""
@@ -263,6 +292,12 @@ class QtAgentEntity:
             return False
 
         self.is_walking = False
+        _, frame_dur = self.get_current_action()
+        self.anim_timer += dt
+        if self.anim_timer >= frame_dur:
+            self.anim_timer = 0.0
+            self.anim_frame = (self.anim_frame + 1) % 4
+
         if self.hold_timer > 0:
             self.hold_timer = max(0.0, self.hold_timer - dt)
 
@@ -326,6 +361,7 @@ class PixelOfficeWidget(QWidget):
         self.selected_agent_id: Optional[str] = None
         self.hovered_agent_id: Optional[str] = None
         self.filter_mode: str = "all"
+        self.show_demo: bool = False
 
         # Modo Constructor por Cuadrículas
         self.edit_mode: bool = False
@@ -369,7 +405,7 @@ class PixelOfficeWidget(QWidget):
     def _visible_entities(self) -> List[QtAgentEntity]:
         return [
             e for e in self.entities.values()
-            if (not e.is_simulated) and (self.filter_mode == "all" or e.is_live)
+            if (self.show_demo or not e.is_simulated) and (self.filter_mode == "all" or e.is_live)
         ]
 
     def refresh_allocations(self):
@@ -437,7 +473,7 @@ class PixelOfficeWidget(QWidget):
 
         found = None
         for ent in self._visible_entities():
-            if math.hypot(wx - ent.x, wy - (ent.y - 12)) <= 26:
+            if math.hypot(wx - ent.x, wy - (ent.y - 24)) <= 32:
                 found = ent.id
                 break
         self.hovered_agent_id = found
@@ -501,7 +537,7 @@ class PixelOfficeWidget(QWidget):
 
         if event.button() == Qt.MouseButton.LeftButton:
             for ent in self._visible_entities():
-                if math.hypot(wx - ent.x, wy - (ent.y - 12)) <= 26:
+                if math.hypot(wx - ent.x, wy - (ent.y - 24)) <= 32:
                     self.selected_agent_id = ent.id
                     self.on_select_agent(ent.id)
                     return
@@ -632,9 +668,16 @@ class PixelOfficeWidget(QWidget):
         h = int(spec["tile_h"]) * TILE_SIZE
         cx, cy = x + w // 2, y + h // 2
 
+        def draw_swivel_chair(cx0: int, cy0: int, accent: str = "#64748b"):
+            # Base con ruedas + asiento ergonómico + respaldo pixel-art
+            p.fillRect(cx0 + 6, cy0 + 21, 20, 3, QColor("#0f172a"))
+            p.fillRect(cx0 + 14, cy0 + 18, 4, 5, QColor("#64748b"))
+            self._rect(p, cx0 + 7, cy0 + 6, 18, 12, "#1e293b", accent, 1)
+            self._rect(p, cx0 + 8, cy0 + 15, 16, 6, "#334155", "#94a3b8", 1)
+
         if otype == "computer_desk":
-            # Escritorio 2x1 celdas (64x32) con doble monitor y silla frontal
-            self._rect(p, x + 8, y + h + 2, 18, 10, "#1e293b", "#475569", 1)
+            # Escritorio 2x1 celdas (64x32) con doble monitor y silla giratoria en la celda frontal
+            draw_swivel_chair(x, y + h, "#34d399" if is_active else "#64748b")
             self._rect(p, x + 2, y + 2, w - 4, h - 4, "#1e293b", "#34d399" if is_active else "#475569", 1)
             for m in range(2):
                 mx, my = x + 6 + m * 25, y + 4
@@ -648,7 +691,8 @@ class PixelOfficeWidget(QWidget):
             self._rect(p, x + 16, y + 21, 22, 5, "#0f172a", "#475569", 1)
 
         elif otype == "laptop_desk":
-            # Escritorio compacto 1x1 (32x32) con laptop abierta
+            # Escritorio compacto 1x1 (32x32) con laptop abierta y silla giratoria
+            draw_swivel_chair(x, y + h, "#38bdf8" if is_active else "#64748b")
             self._rect(p, x + 3, y + 4, w - 6, h - 8, "#292524", "#34d399" if is_active else "#57534e", 1)
             self._rect(p, x + 8, y + 7, 16, 12, "#062116" if is_active else "#0f172a", "#38bdf8" if is_active else "#475569", 1)
             if is_active:
@@ -666,6 +710,7 @@ class PixelOfficeWidget(QWidget):
                     p.fillRect(x + 6 + b * 6, ry, 5, 8, QColor(books[(row * 3 + b) % len(books)]))
 
         elif otype == "server_terminal":
+            draw_swivel_chair(x, y + h, "#fb923c" if is_active else "#475569")
             self._rect(p, x + 2, y + 2, w - 4, h - 4, "#0f131a", "#fb923c" if is_active else "#334155", 1)
             for r_idx in range(2):
                 rx = x + 6 + r_idx * 28
@@ -694,6 +739,7 @@ class PixelOfficeWidget(QWidget):
             p.drawText(QRectF(x, cy - 7, w, 14), Qt.AlignmentFlag.AlignCenter, "ORCH-HUB")
 
         elif otype == "web_radar":
+            draw_swivel_chair(x, y + h, "#22d3ee" if is_active else "#475569")
             self._rect(p, x + 2, y + 3, w - 4, h - 6, "#0a1724", "#22d3ee" if is_active else "#1e3a52", 1)
             p.setPen(QPen(QColor(34, 211, 238, 225 if is_active else 110), 1))
             p.drawEllipse(QPointF(cx, cy), 10, 10)
@@ -707,8 +753,31 @@ class PixelOfficeWidget(QWidget):
             p.fillRect(x + 30, y + 11, 16, 10, QColor("#38bdf8"))
 
         elif otype == "coffee_sofa":
-            self._rect(p, x + 2, y + 4, w - 4, h - 6, "#881337", "#f43f5e" if is_active else "#9f1239", 1)
-            self._rect(p, x + 7, y + 10, w - 14, h - 14, "#be123c")
+            # Sofá mullido con respaldo, apoyabrazos y dos cojines diferenciados
+            self._rect(p, x + 2, y + 2, w - 4, h - 4, "#881337", "#f43f5e" if is_active else "#9f1239", 1)
+            self._rect(p, x + 2, y + 2, w - 4, 8, "#6d0f2b", "#be123c", 1)
+            self._rect(p, x + 7, y + 10, (w - 16) // 2, h - 13, "#be123c", "#fb7185", 1)
+            self._rect(p, x + 9 + (w - 16) // 2, y + 10, (w - 16) // 2, h - 13, "#be123c", "#fb7185", 1)
+            self._rect(p, x + 2, y + 8, 5, h - 10, "#9f1239", "#f43f5e", 1)
+            self._rect(p, x + w - 7, y + 8, 5, h - 10, "#9f1239", "#f43f5e", 1)
+
+        elif otype == "lounge_armchair":
+            # Sillón individual acogedor
+            self._rect(p, x + 3, y + 2, w - 6, h - 4, "#881337", "#f43f5e" if is_active else "#9f1239", 1)
+            self._rect(p, x + 3, y + 2, w - 6, 8, "#6d0f2b", "#be123c", 1)
+            self._rect(p, x + 8, y + 10, w - 16, h - 13, "#be123c", "#fb7185", 1)
+            self._rect(p, x + 3, y + 8, 5, h - 10, "#9f1239", "#f43f5e", 1)
+            self._rect(p, x + w - 8, y + 8, 5, h - 10, "#9f1239", "#f43f5e", 1)
+
+        elif otype == "office_chair":
+            draw_swivel_chair(x, y, "#94a3b8")
+
+        elif otype == "gaming_chair":
+            p.fillRect(x + 6, y + 22, 20, 3, QColor("#0f172a"))
+            p.fillRect(x + 14, y + 18, 4, 6, QColor("#38bdf8"))
+            self._rect(p, x + 7, y + 5, 18, 13, "#0f172a", "#38bdf8", 1)
+            self._rect(p, x + 10, y + 8, 12, 7, "#1e293b", "#f43f5e", 1)
+            self._rect(p, x + 8, y + 16, 16, 6, "#1e293b", "#38bdf8", 1)
 
         elif otype == "coffee_bar":
             self._rect(p, x + 2, y + 3, w - 4, h - 6, "#451a03", "#a16207", 1)
@@ -808,7 +877,9 @@ class PixelOfficeWidget(QWidget):
         x, y = int(ent.x), int(ent.y)
         is_sel = (ent.id == self.selected_agent_id)
         is_hov = (ent.id == self.hovered_agent_id)
-        walk_bob = (-2 if ent.walk_frame % 2 == 1 else 0) if ent.is_walking else int(math.sin(now_sec * 3.5 + x))
+        action, _ = ent.get_current_action()
+        is_seated = action in ("typing_seated", "browsing", "terminal", "relaxing")
+        walk_bob = (-2 if ent.walk_frame % 2 == 1 else 0) if ent.is_walking else (0 if is_seated else int(math.sin(now_sec * 3.0 + x) * 0.8))
 
         if ent.spawn_timer > 0:
             p.setPen(QPen(QColor("#38bdf8"), 2))
@@ -819,19 +890,21 @@ class PixelOfficeWidget(QWidget):
             p.setPen(QPen(QColor("#38bdf8" if is_sel else "#cbd5e1"), 2 if is_sel else 1))
             p.drawEllipse(QPointF(x, y + 12), 16, 6)
 
-        p.setBrush(QColor(0, 0, 0, 115))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QRectF(x - 13, y + 8, 26, 7))
+        if not is_seated:
+            p.setBrush(QColor(0, 0, 0, 120))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(x - 15, y + 8, 30, 8))
 
-        is_typing = (not ent.is_walking) and (ent.current_station in ("coding_desk", "server_lab"))
         pix = SPRITE_ENGINE.get_pixmap(
             ent.character,
             direction=ent.face,
             walk_frame=ent.walk_frame if ent.is_walking else 0,
             scale=2,
-            is_typing=is_typing,
+            action=action,
+            anim_frame=ent.walk_frame if ent.is_walking else ent.anim_frame,
         )
-        p.drawPixmap(int(x - pix.width() / 2), int(y - pix.height() + 14 + walk_bob), pix)
+        y_nudge = 19 if is_seated else 17
+        p.drawPixmap(int(x - pix.width() / 2), int(y - pix.height() + y_nudge + walk_bob), pix)
 
     def _draw_agent_overlay(self, p: QPainter, ent: QtAgentEntity, now_sec: float, force_full: bool):
         x, y = int(ent.x), int(ent.y)
@@ -858,10 +931,10 @@ class PixelOfficeWidget(QWidget):
         p.drawText(QRectF(x - nw / 2, y + 15, nw, 14), Qt.AlignmentFlag.AlignCenter, label)
 
         if is_idle_lounge and not force_full:
-            self._round_pill(p, x - 11, py - 54, 22, 15, 7, QColor(15, 23, 42, 210), QColor(248, 113, 113, 90))
+            self._round_pill(p, x - 11, py - 78, 22, 15, 7, QColor(15, 23, 42, 210), QColor(248, 113, 113, 90))
             p.setPen(QColor("#fca5a5"))
             p.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
-            p.drawText(QRectF(x - 11, py - 54, 22, 15), Qt.AlignmentFlag.AlignCenter, "zZ")
+            p.drawText(QRectF(x - 11, py - 78, 22, 15), Qt.AlignmentFlag.AlignCenter, "zZ")
         else:
             st_title = STATION_LABELS.get(ent.current_station, ("", ent.current_station))[1]
             clean_badge = strip_emojis(ent.badge)
@@ -882,7 +955,7 @@ class PixelOfficeWidget(QWidget):
                 p.setFont(font_b)
                 bw = QFontMetrics(font_b).horizontalAdvance(bubble) + 14
                 bx = max(10.0, min(WORLD_W - bw - 10.0, x - bw / 2))
-                by = py - 58
+                by = max(4.0, py - 84)
                 border_c = QColor("#fbbf24") if (ent.is_collaborating and ent.current_station != "lounge") else (
                     QColor("#38bdf8") if (is_sel or is_hov) else QColor(148, 163, 184, 90)
                 )
@@ -1023,9 +1096,9 @@ QScrollBar::add-line, QScrollBar::sub-line {
 class PixelAgentsWindow(QMainWindow):
     def __init__(self, brain_dir: Optional[str] = None):
         super().__init__()
-        self.setWindowTitle("Pixelavity // Antigravity Live Visualizer")
-        self.resize(1380, 840)
-        self.setMinimumSize(1060, 660)
+        self.setWindowTitle("Pixelavity v1.5.0 // Antigravity Live Visualizer")
+        self.setMinimumSize(880, 560)
+        self._apply_responsive_window_size()
         self.setStyleSheet(CLEAN_STYLESHEET)
 
         icon_path = os.path.join(BASE_DIR, "assets", "icon.ico")
@@ -1033,10 +1106,12 @@ class PixelAgentsWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         self.customization = CustomizationManager()
-        self.watcher = AntigravityBrainWatcher(brain_dir=brain_dir)
+        resolved_brain = brain_dir or self.customization.get_custom_brain_dir()
+        self.watcher = AntigravityBrainWatcher(brain_dir=resolved_brain)
         self.watcher.start()
         self.last_event_id = 0
         self.is_first_sync = True
+        self._last_snapshot: Dict[str, Any] = {}
         self._recent_logs: List[Dict[str, Any]] = []
 
         self._build_ui()
@@ -1045,6 +1120,17 @@ class PixelAgentsWindow(QMainWindow):
         self.sync_timer.timeout.connect(self._sync_from_watcher)
         self.sync_timer.start(750)
         self._sync_from_watcher()
+
+    def _apply_responsive_window_size(self):
+        app = QApplication.instance()
+        screen = app.primaryScreen() if app else None
+        if screen:
+            avail = screen.availableGeometry()
+            w = min(1380, max(880, int(avail.width() * 0.92)))
+            h = min(840, max(560, int(avail.height() * 0.92)))
+            self.resize(w, h)
+        else:
+            self.resize(1200, 740)
 
     def _build_ui(self):
         root = QWidget()
@@ -1090,6 +1176,11 @@ class PixelAgentsWindow(QMainWindow):
         self.btn_edit_office.setToolTip("Abrir menú por categorías (Dispositivos, Muebles, Decoración, Pisos, Paredes)")
         self.btn_edit_office.toggled.connect(self._toggle_office_editor)
         top_layout.addWidget(self.btn_edit_office)
+
+        self.btn_conn = QPushButton("Conexión")
+        self.btn_conn.setToolTip("Diagnóstico de Antigravity, elegir carpeta manualmente o probar Modo Demo")
+        self.btn_conn.clicked.connect(self._open_connection_dialog)
+        top_layout.addWidget(self.btn_conn)
 
         self.btn_filter_live = QPushButton("Solo Activos")
         self.btn_filter_live.setCheckable(True)
@@ -1145,6 +1236,7 @@ class PixelAgentsWindow(QMainWindow):
         side_layout.addWidget(lbl_agents)
 
         self.list_agents = QListWidget()
+        self.list_agents.setIconSize(QSize(34, 44))
         self.list_agents.itemClicked.connect(self._on_list_agent_clicked)
         side_layout.addWidget(self.list_agents, stretch=5)
 
@@ -1202,13 +1294,114 @@ class PixelAgentsWindow(QMainWindow):
             self.office_widget.selected_agent_id = aid
             self._refresh_sidebar()
 
+    def _open_connection_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Conexión y Diagnóstico · Pixelavity")
+        dlg.setMinimumWidth(560)
+        dlg.setStyleSheet(CLEAN_STYLESHEET)
+
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(10)
+
+        snap = self.watcher.get_snapshot()
+        mode = snap.get("detection_mode", "waiting")
+        bdir = snap.get("brain_dir", "")
+        exists = bool(snap.get("brain_dir_exists", False))
+
+        mode_labels = {
+            "transcript":    "Conectado en tiempo real (transcript.jsonl)",
+            "artifacts":     "Conectado en modo artefactos (.md / planes)",
+            "conversations": "Conectado en modo sesiones (.pb)",
+            "waiting":       "Carpeta detectada, esperando conversaciones activas",
+            "not_found":     "No se encontró la carpeta 'brain' de Antigravity",
+        }
+        status_color = "#34d399" if mode in ("transcript", "artifacts", "conversations") else ("#fbbf24" if exists else "#f87171")
+
+        lbl_info = QLabel(
+            f"<b>Estado:</b> <span style='color:{status_color}'>{mode_labels.get(mode, mode)}</span><br>"
+            f"<b>Carpeta actual:</b> <span style='color:#94a3b8'>{bdir}</span><br>"
+            f"<b>Agentes detectados:</b> {len([a for a in snap.get('agents', []) if not a.get('is_simulated')])}<br>"
+            f"<b>Configuración guardada:</b> <span style='color:#64748b'>{self.customization.storage_path}</span>"
+        )
+        lbl_info.setWordWrap(True)
+        lbl_info.setStyleSheet("background:#101624; border:1px solid #1f2b42; border-radius:8px; padding:12px; font-size:12px;")
+        lay.addWidget(lbl_info)
+
+        lbl_help = QLabel(
+            "Si en este computador Antigravity guarda sus datos en otra ubicación, selecciona la carpeta "
+            "<b>brain</b> (o la carpeta <b>.gemini/antigravity</b>). También puedes activar el Modo Demo para "
+            "probar la oficina con agentes de ejemplo."
+        )
+        lbl_help.setWordWrap(True)
+        lbl_help.setStyleSheet("color:#94a3b8; font-size:11px;")
+        lay.addWidget(lbl_help)
+
+        row_btns = QHBoxLayout()
+        btn_pick = QPushButton("Elegir Carpeta...")
+        btn_auto = QPushButton("Auto-detectar")
+        btn_demo = QPushButton("Quitar Demo" if self.office_widget.show_demo else "Activar Modo Demo")
+        btn_log = QPushButton("Abrir Carpeta de Logs")
+
+        def pick_folder():
+            chosen = QFileDialog.getExistingDirectory(dlg, "Selecciona la carpeta 'brain' o '.gemini/antigravity'", bdir or os.path.expanduser("~"))
+            if chosen:
+                self.customization.set_custom_brain_dir(chosen)
+                self.watcher.set_brain_dir(chosen)
+                self._sync_from_watcher()
+                dlg.accept()
+
+        def auto_detect():
+            self.customization.set_custom_brain_dir(None)
+            self.watcher.set_brain_dir(None)
+            self._sync_from_watcher()
+            dlg.accept()
+
+        def toggle_demo():
+            self.office_widget.show_demo = not self.office_widget.show_demo
+            if self.office_widget.show_demo:
+                self.watcher.trigger_simulation("spawn_orchestrator")
+            else:
+                self.watcher.trigger_simulation("clear_sim")
+            self._sync_from_watcher()
+            dlg.accept()
+
+        def open_logs():
+            log_dir = os.path.dirname(self.customization.storage_path)
+            try:
+                if sys.platform == "win32":
+                    os.startfile(log_dir)
+                else:
+                    import subprocess
+                    subprocess.Popen(["xdg-open", log_dir])
+            except Exception as ex:
+                QMessageBox.information(dlg, "Carpeta de Logs", f"Ruta de logs y configuración:\n{log_dir}\n({ex})")
+
+        btn_pick.clicked.connect(pick_folder)
+        btn_auto.clicked.connect(auto_detect)
+        btn_demo.clicked.connect(toggle_demo)
+        btn_log.clicked.connect(open_logs)
+
+        row_btns.addWidget(btn_pick)
+        row_btns.addWidget(btn_auto)
+        row_btns.addWidget(btn_demo)
+        row_btns.addWidget(btn_log)
+        lay.addLayout(row_btns)
+
+        btn_close = QPushButton("Cerrar")
+        btn_close.clicked.connect(dlg.accept)
+        lay.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
+
+        dlg.exec()
+
     def _sync_from_watcher(self):
         snap = self.watcher.get_snapshot(since_event_id=self.last_event_id)
+        self._last_snapshot = snap
         ents = self.office_widget.entities
         current_ids = set()
 
         for ag in snap.get("agents", []):
-            if ag.get("is_simulated"):
+            if ag.get("is_simulated") and not self.office_widget.show_demo:
                 continue
             aid = ag["id"]
             current_ids.add(aid)
@@ -1243,9 +1436,34 @@ class PixelAgentsWindow(QMainWindow):
 
         self._recent_logs = [
             l for l in snap.get("recent_log", [])
-            if not str(l.get("agent_id", "")).startswith(("sim-", "sub-"))
+            if self.office_widget.show_demo or not str(l.get("agent_id", "")).startswith(("sim-", "sub-"))
         ]
+        self._update_connection_pill(snap)
         self._refresh_sidebar()
+
+    def _update_connection_pill(self, snap: Dict[str, Any]):
+        if not hasattr(self, "lbl_live"):
+            return
+        real_agents = [a for a in snap.get("agents", []) if not a.get("is_simulated")]
+        exists = bool(snap.get("brain_dir_exists", False))
+        bdir = snap.get("brain_dir", "")
+
+        if self.office_widget.show_demo:
+            self.lbl_live.setText("● MODO DEMO")
+            self.lbl_live.setStyleSheet("color:#c084fc; background:rgba(192,132,252,0.14); border:1px solid rgba(192,132,252,0.45); border-radius:6px; padding:4px 9px; font-family:'Consolas'; font-size:11px; font-weight:bold;")
+            self.lbl_live.setToolTip(f"Modo Demo activo · Carpeta: {bdir}")
+        elif real_agents:
+            self.lbl_live.setText("● EN VIVO")
+            self.lbl_live.setStyleSheet("")
+            self.lbl_live.setToolTip(f"Conectado a Antigravity ({snap.get('detection_mode')}) en:\n{bdir}")
+        elif exists:
+            self.lbl_live.setText("● ESPERANDO CHATS")
+            self.lbl_live.setStyleSheet("color:#fbbf24; background:rgba(251,191,36,0.14); border:1px solid rgba(251,191,36,0.45); border-radius:6px; padding:4px 9px; font-family:'Consolas'; font-size:11px; font-weight:bold;")
+            self.lbl_live.setToolTip(f"Carpeta detectada, sin sesiones aún:\n{bdir}")
+        else:
+            self.lbl_live.setText("● SIN ANTIGRAVITY")
+            self.lbl_live.setStyleSheet("color:#fca5a5; background:rgba(248,113,113,0.14); border:1px solid rgba(248,113,113,0.45); border-radius:6px; padding:4px 9px; font-family:'Consolas'; font-size:11px; font-weight:bold;")
+            self.lbl_live.setToolTip("No se encontró ~/.gemini/antigravity/brain. Haz clic en 'Conexión' para elegir carpeta o probar Demo.")
 
     def _refresh_sidebar(self):
         if not hasattr(self, "lbl_inspector") or not hasattr(self, "list_agents"):

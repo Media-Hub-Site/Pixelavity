@@ -23,7 +23,123 @@ import time
 import glob
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
+
+
+def _get_candidate_home_dirs() -> List[str]:
+    """Recopila todas las rutas posibles del directorio de usuario en Windows/macOS/Linux."""
+    raw: List[str] = []
+    for env_key in ("USERPROFILE", "HOME"):
+        v = os.environ.get(env_key)
+        if v:
+            raw.append(v)
+    hd = os.environ.get("HOMEDRIVE")
+    hp = os.environ.get("HOMEPATH")
+    if hd and hp:
+        raw.append(hd + hp)
+    try:
+        raw.append(str(Path.home()))
+    except Exception:
+        pass
+    try:
+        raw.append(os.path.expanduser("~"))
+    except Exception:
+        pass
+
+    seen = set()
+    unique: List[str] = []
+    for p in raw:
+        norm = os.path.normpath(os.path.abspath(p))
+        key = norm.lower() if os.name == "nt" else norm
+        if key not in seen:
+            seen.add(key)
+            unique.append(norm)
+    return unique
+
+
+def _normalize_brain_dir_choice(path_str: str) -> str:
+    """Si el usuario selecciona la carpeta padre '.gemini/antigravity' o '.gemini', resuelve a '.../brain'."""
+    p = os.path.normpath(os.path.abspath(os.path.expanduser(path_str)))
+    if os.path.isdir(os.path.join(p, "brain")):
+        return os.path.join(p, "brain")
+    if os.path.isdir(os.path.join(p, "antigravity", "brain")):
+        return os.path.join(p, "antigravity", "brain")
+    return p
+
+
+def discover_antigravity_brain_dir(preferred_dir: Optional[str] = None) -> Tuple[str, List[str]]:
+    """
+    Busca automáticamente la carpeta 'brain' de Antigravity en todas las ubicaciones conocidas.
+    Si existen varias, elige la que tenga actividad más reciente.
+    """
+    candidates: List[str] = []
+    if preferred_dir and str(preferred_dir).strip():
+        candidates.append(_normalize_brain_dir_choice(str(preferred_dir).strip()))
+
+    env_dir = os.environ.get("ANTIGRAVITY_BRAIN_DIR")
+    if env_dir and env_dir.strip():
+        candidates.append(_normalize_brain_dir_choice(env_dir.strip()))
+
+    for home in _get_candidate_home_dirs():
+        candidates.extend([
+            os.path.join(home, ".gemini", "antigravity", "brain"),
+            os.path.join(home, ".antigravity", "brain"),
+            os.path.join(home, "antigravity", "brain"),
+        ])
+
+    for env_key in ("LOCALAPPDATA", "APPDATA"):
+        base = os.environ.get(env_key)
+        if base:
+            candidates.extend([
+                os.path.join(base, ".gemini", "antigravity", "brain"),
+                os.path.join(base, "antigravity", "brain"),
+                os.path.join(base, "Antigravity", "brain"),
+            ])
+
+    seen = set()
+    unique: List[str] = []
+    for c in candidates:
+        norm = os.path.normpath(os.path.abspath(c))
+        key = norm.lower() if os.name == "nt" else norm
+        if key not in seen:
+            seen.add(key)
+            unique.append(norm)
+
+    # Si el usuario pasó una ruta explícita, respetarla siempre (incluso si aún no existe)
+    if preferred_dir and str(preferred_dir).strip():
+        pref_norm = _normalize_brain_dir_choice(str(preferred_dir).strip())
+        return pref_norm, unique
+
+    best_dir: Optional[str] = None
+    best_score: float = -1.0
+    for c in unique:
+        if not os.path.isdir(c):
+            continue
+        score = 0.0
+        try:
+            score = os.path.getmtime(c)
+            with os.scandir(c) as it:
+                for entry in it:
+                    if entry.is_dir():
+                        try:
+                            score = max(score, entry.stat().st_mtime)
+                        except OSError:
+                            pass
+        except OSError:
+            pass
+        conv_sibling = os.path.join(os.path.dirname(c), "conversations")
+        if os.path.isdir(conv_sibling):
+            try:
+                score = max(score, os.path.getmtime(conv_sibling))
+            except OSError:
+                pass
+        if score > best_score:
+            best_score = score
+            best_dir = c
+
+    if best_dir:
+        return best_dir, unique
+    return (unique[0] if unique else os.path.abspath(os.path.expanduser("~/.gemini/antigravity/brain"))), unique
 
 
 # Nombres amigables para los modelos de Gemini / Antigravity
@@ -241,12 +357,12 @@ class AntigravityBrainWatcher:
     """
 
     def __init__(self, brain_dir: Optional[str] = None):
-        if not brain_dir:
-            brain_dir = os.environ.get(
-                "ANTIGRAVITY_BRAIN_DIR",
-                os.path.expanduser("~/.gemini/antigravity/brain"),
-            )
-        self.brain_dir = os.path.abspath(brain_dir)
+        self._explicit_brain_dir = brain_dir
+        resolved, searched = discover_antigravity_brain_dir(brain_dir)
+        self.brain_dir = resolved
+        self.searched_paths = searched
+        self.detection_mode = "waiting" if os.path.isdir(self.brain_dir) else "not_found"
+        self._last_rediscover_ts = time.time()
         self.lock = threading.RLock()
 
         # Mapa de agentes activos/conocidos: agent_id -> dict
@@ -254,9 +370,9 @@ class AntigravityBrainWatcher:
         # Estado de lectura incremental por archivo transcript.jsonl
         self.file_cursors: Dict[str, int] = {}
         self.file_mtimes: Dict[str, float] = {}
+        self.fallback_mtimes: Dict[str, float] = {}
 
         # Relaciones Padre (Orchestrator) -> Hijos (Subagentes)
-        # Guardamos subagentes pendientes cuando invoke_subagent ocurre antes de leer el GENERIC response
         self.pending_subagent_meta: Dict[str, List[Dict[str, str]]] = {}
         self.parent_by_child: Dict[str, str] = {}
         self.subagent_meta_by_id: Dict[str, Dict[str, str]] = {}
@@ -271,6 +387,23 @@ class AntigravityBrainWatcher:
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
+
+    def set_brain_dir(self, new_dir: Optional[str]):
+        """Cambia en caliente la carpeta monitoreada (o vuelve a auto-detectar si es None)."""
+        with self.lock:
+            self._explicit_brain_dir = new_dir
+            resolved, searched = discover_antigravity_brain_dir(new_dir)
+            self.brain_dir = resolved
+            self.searched_paths = searched
+            self.agents.clear()
+            self.file_cursors.clear()
+            self.file_mtimes.clear()
+            self.fallback_mtimes.clear()
+            self.parent_by_child.clear()
+            self.subagent_meta_by_id.clear()
+            self.pending_subagent_meta.clear()
+            self.detection_mode = "waiting" if os.path.isdir(self.brain_dir) else "not_found"
+        self.scan_once(initial=True)
 
     def start(self):
         """Inicia el hilo de monitoreo continuo."""
@@ -330,12 +463,28 @@ class AntigravityBrainWatcher:
             self.events = self.events[-self.max_events:]
 
     def scan_once(self, initial: bool = False):
-        """Escanea las carpetas de conversación en brain/ y procesa nuevas líneas JSONL."""
-        if not os.path.isdir(self.brain_dir):
-            return
-
+        """
+        Escanea Antigravity con soporte multi-versión:
+          1. Prioridad 1: brain/<conv-id>/.system_generated/logs/transcript.jsonl (o transcript_full.jsonl)
+          2. Prioridad 2 (Fallback Antigravity IDE v1.x): archivos .md / .metadata.json en brain/<conv-id>/
+          3. Prioridad 3 (Fallback global): archivos .pb en ../conversations/<conv-id>.pb
+        """
         now = time.time()
-        candidates = []
+
+        # Si aún no existe brain_dir, reintentar auto-descubrimiento cada 4 segundos
+        if not os.path.isdir(self.brain_dir):
+            if (now - self._last_rediscover_ts) >= 4.0:
+                self._last_rediscover_ts = now
+                resolved, searched = discover_antigravity_brain_dir(self._explicit_brain_dir)
+                self.brain_dir = resolved
+                self.searched_paths = searched
+            if not os.path.isdir(self.brain_dir):
+                self.detection_mode = "not_found"
+                return
+
+        transcript_candidates: List[Tuple[float, str, str]] = []
+        artifact_candidates: List[Tuple[float, str, str, str]] = []
+        seen_conv_ids = set()
 
         try:
             with os.scandir(self.brain_dir) as entries:
@@ -343,30 +492,69 @@ class AntigravityBrainWatcher:
                     if not entry.is_dir():
                         continue
                     conv_id = entry.name
-                    transcript_path = os.path.join(
-                        entry.path, ".system_generated", "logs", "transcript.jsonl"
-                    )
-                    if not os.path.isfile(transcript_path):
+                    if conv_id.startswith("."):
                         continue
+
+                    t_primary = os.path.join(entry.path, ".system_generated", "logs", "transcript.jsonl")
+                    t_full = os.path.join(entry.path, ".system_generated", "logs", "transcript_full.jsonl")
+                    tpath = t_primary if os.path.isfile(t_primary) else (t_full if os.path.isfile(t_full) else None)
+                    if tpath:
+                        try:
+                            mtime = os.path.getmtime(tpath)
+                            transcript_candidates.append((mtime, conv_id, tpath))
+                            seen_conv_ids.add(conv_id)
+                            continue
+                        except OSError:
+                            pass
+
+                    latest_mt = 0.0
+                    latest_fn = ""
                     try:
-                        mtime = os.path.getmtime(transcript_path)
+                        with os.scandir(entry.path) as sub_it:
+                            for se in sub_it:
+                                if se.is_file() and se.name.lower().endswith((".md", ".json", ".txt", ".resolved")):
+                                    try:
+                                        smt = se.stat().st_mtime
+                                        if smt > latest_mt:
+                                            latest_mt = smt
+                                            latest_fn = se.name
+                                    except OSError:
+                                        pass
                     except OSError:
-                        continue
-                    candidates.append((mtime, conv_id, transcript_path))
+                        pass
+                    if latest_mt > 0:
+                        artifact_candidates.append((latest_mt, conv_id, entry.path, latest_fn))
+                        seen_conv_ids.add(conv_id)
         except OSError:
             return
 
-        # Ordenar por más reciente primero
-        candidates.sort(key=lambda x: x[0], reverse=True)
+        pb_candidates: List[Tuple[float, str, str]] = []
+        conv_dir = os.path.join(os.path.dirname(self.brain_dir), "conversations")
+        if os.path.isdir(conv_dir):
+            try:
+                with os.scandir(conv_dir) as c_it:
+                    for ce in c_it:
+                        if ce.is_file() and ce.name.endswith(".pb"):
+                            cid = ce.name[:-3]
+                            if cid in seen_conv_ids:
+                                continue
+                            try:
+                                pb_candidates.append((ce.stat().st_mtime, cid, ce.path))
+                            except OSError:
+                                pass
+            except OSError:
+                pass
 
-        # Monitoreamos hasta las 8 conversaciones más recientes (o cualquiera modificada en las últimas 6 horas)
+        transcript_candidates.sort(key=lambda x: x[0], reverse=True)
+        artifact_candidates.sort(key=lambda x: x[0], reverse=True)
+        pb_candidates.sort(key=lambda x: x[0], reverse=True)
+
         selected = []
-        for idx, (mtime, conv_id, tpath) in enumerate(candidates):
+        for idx, (mtime, conv_id, tpath) in enumerate(transcript_candidates):
             age_hours = (now - mtime) / 3600.0
             if idx < 6 or age_hours <= 6.0 or conv_id in self.agents or conv_id in self.parent_by_child:
                 selected.append((mtime, conv_id, tpath))
 
-        # Procesar en orden cronológico para que los padres registren subagentes antes de leer al hijo
         selected.sort(key=lambda x: x[0])
 
         with self.lock:
@@ -376,13 +564,30 @@ class AntigravityBrainWatcher:
                     self._process_transcript_file(conv_id, tpath, mtime, initial=initial)
                     self.file_mtimes[conv_id] = mtime
 
-            # Verificar tiempos de inactividad: si un agente lleva > 45s sin nuevos pasos y su último paso fue DONE
+            for idx, (mtime, conv_id, folder_path, latest_fn) in enumerate(artifact_candidates[:4]):
+                age_hours = (now - mtime) / 3600.0
+                if idx < 3 or age_hours <= 6.0 or conv_id in self.agents:
+                    self._process_artifact_fallback(conv_id, folder_path, latest_fn, mtime, initial=initial)
+
+            if not selected:
+                for mtime, conv_id, pb_path in pb_candidates[:3]:
+                    if (now - mtime) <= 24 * 3600.0 or conv_id in self.agents:
+                        self._process_pb_fallback(conv_id, pb_path, mtime, initial=initial)
+
+            if selected:
+                self.detection_mode = "transcript"
+            elif artifact_candidates:
+                self.detection_mode = "artifacts"
+            elif pb_candidates:
+                self.detection_mode = "conversations"
+            else:
+                self.detection_mode = "waiting"
+
             for conv_id, ag in list(self.agents.items()):
                 idle_secs = now - ag.get("last_updated", now)
                 ag["idle_seconds"] = int(idle_secs)
-                ag["is_live"] = idle_secs < 900  # Activo en los últimos 15 minutos
+                ag["is_live"] = idle_secs < 900
 
-                # Si terminó su turno (waiting_user) y ya pasó tiempo, su estación de reposo es lounge
                 if ag.get("turn_complete", False) and ag.get("station") != "lounge" and idle_secs > 12:
                     ag["station"] = "lounge"
                     ag["activity"] = "idle"
@@ -394,6 +599,97 @@ class AntigravityBrainWatcher:
                             "☕ Descansando en Cafetería",
                             "Turno completado, esperando nuevo prompt", "☕"
                         )
+                elif ag.get("fallback_source") and ag.get("station") != "lounge" and idle_secs > 25:
+                    ag["station"] = "lounge"
+                    ag["activity"] = "idle"
+                    ag["badge"] = "☕ En descanso (Listo)"
+                    ag["detail"] = "Esperando actividad en Antigravity"
+                    ag["turn_complete"] = True
+
+    def _process_artifact_fallback(
+        self,
+        conv_id: str,
+        folder_path: str,
+        latest_fn: str,
+        mtime: float,
+        initial: bool = False,
+    ):
+        prev_mt = self.fallback_mtimes.get(conv_id, 0.0)
+        if mtime <= prev_mt and conv_id in self.agents:
+            return
+        self.fallback_mtimes[conv_id] = mtime
+
+        ag = self._ensure_agent_entry(conv_id, mtime)
+        ag["fallback_source"] = "artifacts"
+        ag["last_updated"] = mtime
+        ag["name"] = f"Antigravity [{conv_id[:4]}]"
+
+        title = ag.get("chat_title", "Sesión Antigravity")
+        for cand_md in ("task.md", "implementation_plan.md", latest_fn):
+            p = os.path.join(folder_path, cand_md)
+            if os.path.isfile(p) and cand_md.lower().endswith(".md"):
+                try:
+                    with open(p, "r", encoding="utf-8", errors="replace") as f:
+                        for ln in f:
+                            ln = ln.strip().lstrip("#").strip()
+                            if ln:
+                                title = ln[:55]
+                                break
+                    break
+                except OSError:
+                    pass
+        ag["chat_title"] = title
+
+        fn_low = (latest_fn or "").lower()
+        is_recent = (time.time() - mtime) < 25
+        if not is_recent:
+            st, act, badge, icon = "lounge", "idle", "☕ En descanso (Listo)", "☕"
+            ag["turn_complete"] = True
+        elif "plan" in fn_low:
+            st, act, badge, icon = "strategy_board", "thinking", "💭 Planificando Tarea", "💭"
+            ag["turn_complete"] = False
+        elif "walkthrough" in fn_low or "report" in fn_low:
+            st, act, badge, icon = "library", "reading", "📖 Documentando Cambios", "📖"
+            ag["turn_complete"] = False
+        else:
+            st, act, badge, icon = "coding_desk", "coding", f"💻 Trabajando ({latest_fn[:16]})", "💻"
+            ag["turn_complete"] = False
+
+        ag["station"] = st
+        ag["activity"] = act
+        ag["badge"] = badge
+        ag["detail"] = f"Archivo activo: {latest_fn}"
+        ag["icon"] = icon
+        if not initial and is_recent:
+            self._emit_event(conv_id, st, act, badge, ag["detail"], icon)
+
+    def _process_pb_fallback(self, conv_id: str, pb_path: str, mtime: float, initial: bool = False):
+        prev_mt = self.fallback_mtimes.get(conv_id, 0.0)
+        if mtime <= prev_mt and conv_id in self.agents:
+            return
+        self.fallback_mtimes[conv_id] = mtime
+
+        ag = self._ensure_agent_entry(conv_id, mtime)
+        ag["fallback_source"] = "conversations"
+        ag["last_updated"] = mtime
+        ag["name"] = f"Chat [{conv_id[:4]}]"
+        ag["chat_title"] = f"Conversación Antigravity ({conv_id[:8]})"
+
+        is_recent = (time.time() - mtime) < 25
+        if is_recent:
+            st, act, badge, icon = "coding_desk", "coding", "💻 Sesión Activa", "💻"
+            ag["turn_complete"] = False
+        else:
+            st, act, badge, icon = "lounge", "idle", "☕ En espera", "☕"
+            ag["turn_complete"] = True
+
+        ag["station"] = st
+        ag["activity"] = act
+        ag["badge"] = badge
+        ag["detail"] = "Detectado vía conversations/*.pb"
+        ag["icon"] = icon
+        if not initial and is_recent:
+            self._emit_event(conv_id, st, act, badge, ag["detail"], icon)
 
     def _ensure_agent_entry(self, conv_id: str, mtime: float) -> Dict[str, Any]:
         if conv_id not in self.agents:
@@ -861,6 +1157,9 @@ class AntigravityBrainWatcher:
             return {
                 "timestamp": time.time(),
                 "brain_dir": self.brain_dir,
+                "brain_dir_exists": os.path.isdir(self.brain_dir),
+                "detection_mode": self.detection_mode,
+                "searched_paths": self.searched_paths,
                 "latest_event_id": self.event_seq - 1,
                 "agents": all_agents,
                 "events": new_events,

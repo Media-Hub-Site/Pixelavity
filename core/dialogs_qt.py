@@ -17,18 +17,21 @@ from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QListWidget, QListWidgetItem,
     QFrame, QColorDialog, QMessageBox, QCheckBox, QButtonGroup,
-    QScrollArea, QStackedWidget
+    QScrollArea, QStackedWidget, QComboBox
 )
 
 from core.customization import (
     CustomizationManager,
     SKIN_TONES,
+    EYE_COLORS,
     FACE_STYLES,
     HAIR_STYLES,
     HAIR_COLORS,
-    OUTFIT_STYLES,
+    TORSO_STYLES,
+    PANTS_STYLES,
     SHOE_STYLES,
     ACCESSORY_STYLES,
+    BACK_GEAR_STYLES,
     FLOOR_MATERIALS,
     WALL_MATERIALS,
     OBJECT_CATALOG,
@@ -37,43 +40,73 @@ from core.sprites import SPRITE_ENGINE
 
 
 CLOTHING_COLOR_PRESETS = [
-    "#334155", "#1e293b", "#38bdf8", "#0284c7", "#10b981",
-    "#059669", "#f43f5e", "#e11d48", "#f472b6", "#a855f7",
-    "#eab308", "#f97316", "#78350f", "#f8fafc",
+    "#585358", "#343b59", "#2b3a55", "#1e293b", "#7c1d2e",
+    "#0f766e", "#a89282", "#78350f", "#d97706", "#38bdf8",
+    "#10b981", "#f43f5e", "#7e22ce", "#e2e8f0",
 ]
 
 SHOE_COLOR_PRESETS = [
-    "#451a03", "#1e293b", "#0f172a", "#be185d", "#0284c7",
-    "#15803d", "#b45309", "#7c2d12", "#6b21a8", "#dc2626",
+    "#3d261f", "#7c1d2e", "#1e293b", "#0f172a", "#78350f",
+    "#b45309", "#15803d", "#0284c7", "#6b21a8", "#e2e8f0",
+]
+
+
+PREVIEW_ANIMATIONS = [
+    ("walk",          "Caminar"),
+    ("typing_seated", "Sentado · Programar"),
+    ("reading",       "Biblioteca · Leer Libro"),
+    ("thinking",      "Pizarra · Pensar / Escribir"),
+    ("terminal",      "Terminal · Servidor"),
+    ("browsing",      "Web · Radar"),
+    ("painting",      "Estudio UI · Pintar"),
+    ("orchestrating", "Orchestrator · Dirigir"),
+    ("relaxing",      "Lounge · Café Sentado"),
+    ("idle",          "Quieto · Parpadear"),
 ]
 
 
 class FourDirPreviewWidget(QWidget):
     """
     Muestra el personaje editado en las 4 direcciones simultáneamente:
-    Adelante (down), Atrás (up), Izquierda (left) y Derecha (right).
+    Adelante (down), Atrás (up), Izquierda 3/4 (left) y Derecha 3/4 (right).
+    Soporta previsualización de todas las animaciones interactivas por estación.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.character: Dict[str, Any] = {}
         self.walk_frame = 0
-        self.animate_walk = True
-        self.setMinimumSize(300, 290)
+        self.preview_action = "walk"
+        self.setMinimumSize(340, 380)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
-        self.timer.start(180)
+        self.timer.start(220)
 
     def set_character(self, char_data: Dict[str, Any]):
         self.character = copy.deepcopy(char_data)
         self.update()
 
+    def set_preview_action(self, action: str):
+        self.preview_action = action
+        self.walk_frame = 0
+        speed_ms = {
+            "walk": 180,
+            "typing_seated": 160,
+            "terminal": 180,
+            "browsing": 240,
+            "painting": 260,
+            "orchestrating": 280,
+            "reading": 400,
+            "thinking": 420,
+            "relaxing": 500,
+            "idle": 520,
+        }.get(action, 240)
+        self.timer.setInterval(speed_ms)
+        self.update()
+
     def _tick(self):
-        if self.animate_walk:
-            self.walk_frame = (self.walk_frame + 1) % 4
-        else:
-            self.walk_frame = 0
+        self.walk_frame = (self.walk_frame + 1) % 4
         self.update()
 
     def paintEvent(self, event):
@@ -98,7 +131,7 @@ class FourDirPreviewWidget(QWidget):
         cols = 2
         cell_w = self.width() / cols
         cell_h = (self.height() - 16) / 2
-        scale = 3
+        scale = 3 if cell_h >= 175 else 2
 
         for idx, (dir_id, label) in enumerate(directions):
             r = idx // cols
@@ -111,13 +144,23 @@ class FourDirPreviewWidget(QWidget):
             p.setPen(QPen(QColor("#24334f"), 1))
             p.drawRoundedRect(card_rect, 8, 8)
 
-            p.setBrush(QColor(0, 0, 0, 115))
-            p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(cx - 22, cy + 28, 44, 11))
+            pix = SPRITE_ENGINE.get_pixmap(
+                self.character,
+                direction=dir_id,
+                walk_frame=self.walk_frame if self.preview_action == "walk" else 0,
+                scale=scale,
+                action=self.preview_action,
+                anim_frame=self.walk_frame,
+            )
+            bob = -2 if (self.preview_action == "walk" and self.walk_frame % 2 == 1) else 0
+            draw_y = int(cy - pix.height() / 2 - 8 + bob)
+            foot_y = draw_y + pix.height() - (3 * scale)
 
-            pix = SPRITE_ENGINE.get_pixmap(self.character, direction=dir_id, walk_frame=self.walk_frame, scale=scale)
-            bob = -3 if (self.animate_walk and self.walk_frame % 2 == 1) else 0
-            p.drawPixmap(int(cx - pix.width() / 2), int(cy - pix.height() / 2 - 4 + bob), pix)
+            p.setBrush(QColor(0, 0, 0, 120))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(cx - 24, foot_y - 4, 48, 10))
+
+            p.drawPixmap(int(cx - pix.width() / 2), draw_y, pix)
 
             p.setPen(QColor("#94a3b8"))
             p.setFont(QFont("Consolas", 9, QFont.Weight.Bold))
@@ -131,21 +174,22 @@ class FourDirPreviewWidget(QWidget):
 
 
 # =============================================================================
-# CREADOR DE PERSONAJES CON SECCIONES Y CUADRADOS VISUALES DE DISEÑO AISLADO
+# CREADOR DE PERSONAJES CON 7 SECCIONES MODULARES Y CUADRADOS VISUALES
 # =============================================================================
 class CharacterCreatorDialog(QDialog):
     """
-    Editor visual de personajes organizado por secciones (Peinado, Cara, Ropa, Zapatos, Accesorio).
-    Cada opción se muestra como un cuadrado de diseño pixel-art con SOLO esa parte renderizada.
+    Editor visual de personajes organizado por 7 secciones independientes:
+    Peinado, Cara, Torso, Pantalón, Botas, Cabeza y Espalda/Armas.
+    Cada opción se muestra como un cuadrado de diseño pixel-art con SOLO esa pieza renderizada.
     """
 
     def __init__(self, manager: CustomizationManager, on_changed: Optional[Callable] = None, parent=None):
         super().__init__(parent)
         self.manager = manager
         self.on_changed = on_changed
-        self.setWindowTitle("Pixelavity · Creador Visual de Personajes")
-        self.resize(1040, 660)
-        self.setMinimumSize(960, 600)
+        self.setWindowTitle("Pixelavity · Creador Visual de Personajes (Alto Detalle)")
+        self.resize(1160, 720)
+        self.setMinimumSize(1040, 650)
 
         self.current_char: Dict[str, Any] = {}
         self._updating_ui = False
@@ -154,9 +198,11 @@ class CharacterCreatorDialog(QDialog):
         self._design_squares: Dict[str, Dict[str, QPushButton]] = {
             "hair": {},
             "face": {},
-            "outfit": {},
+            "torso": {},
+            "pants": {},
             "shoes": {},
             "accessory": {},
+            "back_gear": {},
         }
 
         self._build_ui()
@@ -275,7 +321,7 @@ class CharacterCreatorDialog(QDialog):
         left_layout.addWidget(lbl_pool)
 
         self.list_chars = QListWidget()
-        self.list_chars.setIconSize(QSize(38, 46))
+        self.list_chars.setIconSize(QSize(44, 56))
         self.list_chars.currentRowChanged.connect(self._on_row_selected)
         left_layout.addWidget(self.list_chars, stretch=1)
 
@@ -293,7 +339,7 @@ class CharacterCreatorDialog(QDialog):
         btn_del.clicked.connect(self._delete_current)
         left_layout.addWidget(btn_del)
 
-        btn_reset = QPushButton("Restaurar 3 por Defecto")
+        btn_reset = QPushButton("Restaurar por Defecto")
         btn_reset.clicked.connect(self._reset_defaults)
         left_layout.addWidget(btn_reset)
 
@@ -312,18 +358,30 @@ class CharacterCreatorDialog(QDialog):
         self.inp_name.textEdited.connect(self._on_name_edited)
         name_row.addWidget(self.inp_name, stretch=1)
 
-        self.chk_anim = QCheckBox("Caminar")
-        self.chk_anim.setChecked(True)
-        self.chk_anim.toggled.connect(self._toggle_walk_anim)
-        name_row.addWidget(self.chk_anim)
+        self.cmb_anim = QComboBox()
+        self.cmb_anim.setStyleSheet("""
+            QComboBox {
+                background-color: #151d2e; color: #38bdf8;
+                border: 1px solid #283754; border-radius: 6px;
+                padding: 5px 8px; font-size: 11px; font-weight: bold;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #101624; color: #eef3ff;
+                selection-background-color: #1e3a5f;
+            }
+        """)
+        for act_id, act_label in PREVIEW_ANIMATIONS:
+            self.cmb_anim.addItem(act_label, act_id)
+        self.cmb_anim.currentIndexChanged.connect(self._on_anim_changed)
+        name_row.addWidget(self.cmb_anim)
         center_layout.addLayout(name_row)
 
         self.preview_widget = FourDirPreviewWidget()
         center_layout.addWidget(self.preview_widget, stretch=1)
 
         hint_lbl = QLabel(
-            "Selecciona una sección a la derecha (Peinado, Cara, Ropa, Zapatos o Accesorio) "
-            "y haz clic sobre cualquier cuadrado visual para aplicar ese diseño al instante."
+            "Combina libremente Peinado, Cara, Torso, Pantalón, Botas, Accesorios de Cabeza "
+            "y Equipo de Espalda/Armas. Haz clic en cualquier diseño para verlo en vivo."
         )
         hint_lbl.setWordWrap(True)
         hint_lbl.setStyleSheet("color: #8b9bb4; font-size: 11px; padding: 7px; background: #131b2e; border-radius: 6px;")
@@ -331,30 +389,32 @@ class CharacterCreatorDialog(QDialog):
 
         root.addWidget(center_card, stretch=1)
 
-        # 3. COLUMNA DERECHA: SECCIONES DE ATRIBUTOS CON CUADRADOS VISUALES
+        # 3. COLUMNA DERECHA: 7 SECCIONES DE ATRIBUTOS CON CUADRADOS VISUALES
         right_card = QFrame()
         right_card.setObjectName("Card")
-        right_card.setFixedWidth(415)
+        right_card.setFixedWidth(445)
         right_layout = QVBoxLayout(right_card)
         right_layout.setContentsMargins(12, 12, 12, 12)
-        right_layout.setSpacing(10)
+        right_layout.setSpacing(8)
 
         lbl_sec = QLabel("SECCIONES DE DISEÑO")
         lbl_sec.setObjectName("SectionTitle")
         right_layout.addWidget(lbl_sec)
 
-        # Barra de pestañas de sección
-        tabs_row = QHBoxLayout()
-        tabs_row.setSpacing(5)
+        # Cuadrícula limpia de 2 filas para las 7 secciones modulares
+        tabs_grid = QGridLayout()
+        tabs_grid.setSpacing(5)
         self.sec_group = QButtonGroup(self)
         self.sec_group.setExclusive(True)
 
         sections = [
             (0, "Peinado"),
             (1, "Cara"),
-            (2, "Ropa"),
-            (3, "Zapatos"),
-            (4, "Accesorio"),
+            (2, "Torso"),
+            (3, "Pantalón"),
+            (4, "Botas"),
+            (5, "Cabeza"),
+            (6, "Espalda"),
         ]
         for idx, title in sections:
             b = QPushButton(title)
@@ -364,16 +424,18 @@ class CharacterCreatorDialog(QDialog):
                 b.setChecked(True)
             b.clicked.connect(lambda checked=False, i=idx: self.stack.setCurrentIndex(i))
             self.sec_group.addButton(b, idx)
-            tabs_row.addWidget(b)
-        right_layout.addLayout(tabs_row)
+            tabs_grid.addWidget(b, idx // 4, idx % 4)
+        right_layout.addLayout(tabs_grid)
 
         # Contenedor por páginas para cada sección
         self.stack = QStackedWidget()
         self.stack.addWidget(self._build_hair_page())
         self.stack.addWidget(self._build_face_page())
-        self.stack.addWidget(self._build_outfit_page())
+        self.stack.addWidget(self._build_torso_page())
+        self.stack.addWidget(self._build_pants_page())
         self.stack.addWidget(self._build_shoes_page())
         self.stack.addWidget(self._build_accessory_page())
+        self.stack.addWidget(self._build_back_gear_page())
         right_layout.addWidget(self.stack, stretch=1)
 
         btn_close = QPushButton("Guardar y Volver a la Oficina")
@@ -478,7 +540,7 @@ class CharacterCreatorDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(4, 6, 4, 6)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
         lbl = QLabel(f"Selecciona la expresión de la cara ({len(FACE_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
@@ -490,28 +552,46 @@ class CharacterCreatorDialog(QDialog):
             "skin_color",
             [s["color"] for s in SKIN_TONES],
         ))
+        layout.addWidget(self._create_color_swatches_row(
+            "Color de Ojos:",
+            "eye_color",
+            [e["color"] for e in EYE_COLORS],
+        ))
         return page
 
-    def _build_outfit_page(self) -> QWidget:
+    def _build_torso_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(8)
 
-        lbl = QLabel(f"Selecciona el diseño de la ropa ({len(OUTFIT_STYLES)} estilos):")
+        lbl = QLabel(f"Selecciona el diseño del torso ({len(TORSO_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
-        layout.addWidget(self._create_design_grid("outfit", OUTFIT_STYLES, "outfit_style", cols=4), stretch=1)
+        layout.addWidget(self._create_design_grid("torso", TORSO_STYLES, "torso_style", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
-            "Color Superior (Camisa / Chaqueta / Capa):",
+            "Color del Torso (Túnica / Haori / Chaqueta / Armadura):",
             "top_color",
             CLOTHING_COLOR_PRESETS[:9],
         ))
+        return page
+
+    def _build_pants_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setSpacing(8)
+
+        lbl = QLabel(f"Selecciona el pantalón o falda ({len(PANTS_STYLES)} estilos):")
+        lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+        layout.addWidget(lbl)
+
+        layout.addWidget(self._create_design_grid("pants", PANTS_STYLES, "pants_style", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
-            "Color Inferior (Pantalón / Falda / Overol):",
+            "Color del Pantalón / Hakama / Falda:",
             "bottom_color",
-            CLOTHING_COLOR_PRESETS[3:12],
+            CLOTHING_COLOR_PRESETS[2:11],
         ))
         return page
 
@@ -521,13 +601,13 @@ class CharacterCreatorDialog(QDialog):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(10)
 
-        lbl = QLabel(f"Selecciona el diseño de los zapatos ({len(SHOE_STYLES)} estilos):")
+        lbl = QLabel(f"Selecciona las botas o calzado ({len(SHOE_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
         layout.addWidget(self._create_design_grid("shoes", SHOE_STYLES, "shoe_style", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
-            "Color del Calzado:",
+            "Color de las Botas / Calzado:",
             "shoe_color",
             SHOE_COLOR_PRESETS,
         ))
@@ -539,15 +619,33 @@ class CharacterCreatorDialog(QDialog):
         layout.setContentsMargins(4, 6, 4, 6)
         layout.setSpacing(10)
 
-        lbl = QLabel(f"Selecciona el sombrero o accesorio ({len(ACCESSORY_STYLES)} estilos):")
+        lbl = QLabel(f"Selecciona accesorio de cabeza / rostro ({len(ACCESSORY_STYLES)} estilos):")
         lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
         layout.addWidget(lbl)
 
         layout.addWidget(self._create_design_grid("accessory", ACCESSORY_STYLES, "accessory", cols=4), stretch=1)
         layout.addWidget(self._create_color_swatches_row(
-            "Color del Accesorio / Cinta / Detalle:",
+            "Color de Acento (Accesorios / Fajín / Capa / Detalles):",
             "accessory_color",
-            CLOTHING_COLOR_PRESETS[2:11],
+            CLOTHING_COLOR_PRESETS[4:13],
+        ))
+        return page
+
+    def _build_back_gear_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setSpacing(10)
+
+        lbl = QLabel(f"Selecciona equipo de espalda / armas / capa ({len(BACK_GEAR_STYLES)} estilos):")
+        lbl.setStyleSheet("color: #cbd5e1; font-size: 11px;")
+        layout.addWidget(lbl)
+
+        layout.addWidget(self._create_design_grid("back_gear", BACK_GEAR_STYLES, "back_gear", cols=4), stretch=1)
+        layout.addWidget(self._create_color_swatches_row(
+            "Color de Capa / Bufanda / Energía:",
+            "accessory_color",
+            CLOTHING_COLOR_PRESETS[4:13],
         ))
         return page
 
@@ -559,9 +657,11 @@ class CharacterCreatorDialog(QDialog):
         field_by_kind = {
             "hair": "hair_style",
             "face": "face_style",
-            "outfit": "outfit_style",
+            "torso": "torso_style",
+            "pants": "pants_style",
             "shoes": "shoe_style",
             "accessory": "accessory",
+            "back_gear": "back_gear",
         }
         for kind, btn_map in self._design_squares.items():
             active_val = ch.get(field_by_kind[kind])
@@ -595,8 +695,10 @@ class CharacterCreatorDialog(QDialog):
         self.current_char["name"] = self.inp_name.text().strip() or "Personaje"
         self._persist_current()
 
-    def _toggle_walk_anim(self, checked: bool):
-        self.preview_widget.animate_walk = checked
+    def _on_anim_changed(self, idx: int):
+        act_id = self.cmb_anim.itemData(idx)
+        if act_id:
+            self.preview_widget.set_preview_action(act_id)
 
     def _reload_list(self, select_index: int = 0):
         self._updating_ui = True
@@ -642,20 +744,24 @@ class CharacterCreatorDialog(QDialog):
             self.on_changed()
 
     def _create_new_character(self):
-        palette = ["#38bdf8", "#10b981", "#f43f5e", "#a855f7", "#f59e0b", "#3b82f6", "#ec4899"]
+        torso = random.choice(TORSO_STYLES)["id"]
         new_ch = {
             "name": f"Agente #{len(self.manager.get_characters()) + 1}",
             "skin_color": random.choice(SKIN_TONES)["color"],
+            "eye_color": random.choice(EYE_COLORS)["color"],
             "face_style": random.choice(FACE_STYLES)["id"],
             "hair_style": random.choice(HAIR_STYLES)["id"],
             "hair_color": random.choice(HAIR_COLORS)["color"],
-            "outfit_style": random.choice(OUTFIT_STYLES)["id"],
-            "top_color": random.choice(palette),
-            "bottom_color": random.choice(["#1e293b", "#334155", "#1e3a8a", "#3f2e21", "#4c1d95"]),
+            "torso_style": torso,
+            "outfit_style": torso,
+            "top_color": random.choice(CLOTHING_COLOR_PRESETS),
+            "pants_style": random.choice(PANTS_STYLES)["id"],
+            "bottom_color": random.choice(CLOTHING_COLOR_PRESETS[:9]),
             "shoe_style": random.choice(SHOE_STYLES)["id"],
             "shoe_color": random.choice(SHOE_COLOR_PRESETS),
             "accessory": random.choice(ACCESSORY_STYLES)["id"],
-            "accessory_color": random.choice(palette),
+            "accessory_color": random.choice(CLOTHING_COLOR_PRESETS[4:]),
+            "back_gear": random.choice(BACK_GEAR_STYLES)["id"],
         }
         self.manager.save_character(new_ch)
         self._reload_list(select_index=len(self.manager.get_characters()) - 1)
@@ -665,19 +771,23 @@ class CharacterCreatorDialog(QDialog):
     def _randomize_current(self):
         if not self.current_char:
             return
-        palette = ["#38bdf8", "#10b981", "#f43f5e", "#a855f7", "#f59e0b", "#3b82f6", "#ec4899", "#eab308"]
+        torso = random.choice(TORSO_STYLES)["id"]
         self.current_char.update({
             "skin_color": random.choice(SKIN_TONES)["color"],
+            "eye_color": random.choice(EYE_COLORS)["color"],
             "face_style": random.choice(FACE_STYLES)["id"],
             "hair_style": random.choice(HAIR_STYLES)["id"],
             "hair_color": random.choice(HAIR_COLORS)["color"],
-            "outfit_style": random.choice(OUTFIT_STYLES)["id"],
-            "top_color": random.choice(palette),
-            "bottom_color": random.choice(["#1e293b", "#334155", "#1e3a8a", "#3f2e21", "#581c87"]),
+            "torso_style": torso,
+            "outfit_style": torso,
+            "top_color": random.choice(CLOTHING_COLOR_PRESETS),
+            "pants_style": random.choice(PANTS_STYLES)["id"],
+            "bottom_color": random.choice(CLOTHING_COLOR_PRESETS[:9]),
             "shoe_style": random.choice(SHOE_STYLES)["id"],
             "shoe_color": random.choice(SHOE_COLOR_PRESETS),
             "accessory": random.choice(ACCESSORY_STYLES)["id"],
-            "accessory_color": random.choice(palette),
+            "accessory_color": random.choice(CLOTHING_COLOR_PRESETS[4:]),
+            "back_gear": random.choice(BACK_GEAR_STYLES)["id"],
         })
         self._persist_current()
 

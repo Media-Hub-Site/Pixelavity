@@ -1,6 +1,6 @@
 ; Script de Inno Setup para Pixelavity (Media Hub Conglomerate)
 #define MyAppName "Pixelavity"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.5.0"
 #define MyAppPublisher "Media Hub (Alan Dave)"
 #define MyAppURL "https://github.com/Media-Hub-Site/Pixelavity"
 #define MyAppExeName "Pixelavity.exe"
@@ -29,6 +29,8 @@ SetupIconFile=assets\icon.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=yes
+RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]

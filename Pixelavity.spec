@@ -1,10 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = [
     ('assets', 'assets'),
     ('web', 'web'),
 ]
+datas += collect_data_files('PyQt6', includes=['Qt6/plugins/platforms/*', 'Qt6/plugins/imageformats/*', 'Qt6/plugins/styles/*'])
 
 binaries = []
 hiddenimports = [
@@ -15,6 +17,10 @@ hiddenimports = [
     'core.sprites',
     'core.dialogs_qt',
     'app_qt',
+    'ctypes',
+    'logging',
+    'traceback',
+    'PyQt6.sip',
     'PyQt6.QtCore',
     'PyQt6.QtGui',
     'PyQt6.QtWidgets',
@@ -22,8 +28,8 @@ hiddenimports = [
 
 sys32 = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32")
 vc_dlls = [
-    "msvcp140.dll", "msvcp140_1.dll",
-    "vcruntime140.dll", "vcruntime140_1.dll",
+    "msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll",
+    "vcruntime140.dll", "vcruntime140_1.dll", "concrt140.dll",
 ]
 for dll in vc_dlls:
     dll_path = os.path.join(sys32, dll)
