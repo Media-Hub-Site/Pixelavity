@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Pixelavity - Diálogo Creador de Personajes (4 Direcciones) y Barra Editora de Oficina / Background
+Pixelavity - Diálogo Creador de Personajes (4 Direcciones) y Menú Constructor por Categorías
+Al estilo Pixel Agents:
+  - Menú constructor organizado por pestañas de categoría:
+      1. 💻 Dispositivos (Computadores, Servidores, Pizarras, Orchestrator, Radar Web, Mesa UI)
+      2. 🪑 Muebles (Estanterías de Libros, Sofás, Barra de Café, Mesas, Archivadores)
+      3. 🪴 Decoración (Plantas, Cactus, Arcade, Dispensador, Alfombras, Lámparas, Trofeos)
+      4. 🎨 Pisos por Cuadrícula (con selector de Modo 1x1 Uno por Uno y Modo Rellenar / Bote)
+      5. 🧱 Paredes por Cuadrícula (Colocar muros 1x1 o abrir puertas/espacios)
+  - Herramientas de cuadrícula: Mover objeto por celdas (col, row), Colocar desde catálogo y Eliminar.
 """
 
 import copy
@@ -12,7 +20,8 @@ from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QIcon
 from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QComboBox, QListWidget,
-    QListWidgetItem, QFrame, QColorDialog, QMessageBox, QCheckBox
+    QListWidgetItem, QFrame, QColorDialog, QMessageBox, QCheckBox,
+    QButtonGroup, QScrollArea
 )
 
 from core.customization import (
@@ -25,8 +34,8 @@ from core.customization import (
     SHOE_STYLES,
     ACCESSORY_STYLES,
     FLOOR_MATERIALS,
-    DEVICE_CATALOG,
-    DECORATION_CATALOG,
+    WALL_MATERIALS,
+    OBJECT_CATALOG,
 )
 from core.sprites import SPRITE_ENGINE
 
@@ -43,7 +52,7 @@ class FourDirPreviewWidget(QWidget):
         self.character: Dict[str, Any] = {}
         self.walk_frame = 0
         self.animate_walk = True
-        self.setMinimumSize(310, 270)
+        self.setMinimumSize(320, 290)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -81,36 +90,33 @@ class FourDirPreviewWidget(QWidget):
 
         cols = 2
         cell_w = self.width() / cols
-        cell_h = (self.height() - 20) / 2
-        scale = 4
+        cell_h = (self.height() - 16) / 2
+        scale = 3
 
         for idx, (dir_id, label) in enumerate(directions):
             r = idx // cols
             c = idx % cols
             cx = c * cell_w + cell_w / 2
-            cy = 10 + r * cell_h + cell_h / 2
+            cy = 8 + r * cell_h + cell_h / 2
 
-            # Tarjeta de cada dirección
-            card_rect = QRectF(c * cell_w + 12, 10 + r * cell_h + 6, cell_w - 24, cell_h - 12)
+            card_rect = QRectF(c * cell_w + 10, 8 + r * cell_h + 5, cell_w - 20, cell_h - 10)
             p.setBrush(QColor("#131b2e"))
             p.setPen(QPen(QColor("#24334f"), 1))
             p.drawRoundedRect(card_rect, 8, 8)
 
             # Sombra en el piso
-            p.setBrush(QColor(0, 0, 0, 110))
+            p.setBrush(QColor(0, 0, 0, 115))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(cx - 24, cy + 28, 48, 12))
+            p.drawEllipse(QRectF(cx - 22, cy + 28, 44, 11))
 
-            # Dibujar el sprite escalado 4x (88x112 px)
             pix = SPRITE_ENGINE.get_pixmap(self.character, direction=dir_id, walk_frame=self.walk_frame, scale=scale)
             bob = -3 if (self.animate_walk and self.walk_frame % 2 == 1) else 0
-            p.drawPixmap(int(cx - pix.width() / 2), int(cy - pix.height() / 2 - 6 + bob), pix)
+            p.drawPixmap(int(cx - pix.width() / 2), int(cy - pix.height() / 2 - 4 + bob), pix)
 
-            # Etiqueta de dirección
             p.setPen(QColor("#94a3b8"))
             p.setFont(QFont("Consolas", 9, QFont.Weight.Bold))
             p.drawText(
-                QRectF(card_rect.left(), card_rect.bottom() - 22, card_rect.width(), 18),
+                QRectF(card_rect.left(), card_rect.bottom() - 20, card_rect.width(), 16),
                 Qt.AlignmentFlag.AlignCenter,
                 label,
             )
@@ -120,9 +126,8 @@ class FourDirPreviewWidget(QWidget):
 
 class CharacterCreatorDialog(QDialog):
     """
-    Editor interactivo de personajes para Pixelavity.
-    Permite modificar pelo, cara, piel, ropa, zapatos y accesorios, y gestionar el pool
-    de personajes que la aplicación asigna aleatoriamente sin repetir a los agentes activos.
+    Editor interactivo de personajes para Pixelavity con 12 peinados esculpidos,
+    tonos de piel, expresiones, ropa, zapatos y accesorios en 4 direcciones.
     """
 
     def __init__(self, manager: CustomizationManager, on_changed: Optional[Callable] = None, parent=None):
@@ -130,8 +135,8 @@ class CharacterCreatorDialog(QDialog):
         self.manager = manager
         self.on_changed = on_changed
         self.setWindowTitle("Pixelavity · Creador y Personalización de Personajes")
-        self.resize(960, 620)
-        self.setMinimumSize(880, 560)
+        self.resize(980, 640)
+        self.setMinimumSize(900, 580)
 
         self.current_char: Dict[str, Any] = {}
         self._updating_ui = False
@@ -210,10 +215,10 @@ class CharacterCreatorDialog(QDialog):
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(14)
 
-        # 1. COLUMNA IZQUIERDA: LISTA DE PERSONAJES EN EL POOL
+        # 1. COLUMNA IZQUIERDA
         left_card = QFrame()
         left_card.setObjectName("Card")
-        left_card.setFixedWidth(235)
+        left_card.setFixedWidth(240)
         left_layout = QVBoxLayout(left_card)
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(8)
@@ -246,7 +251,7 @@ class CharacterCreatorDialog(QDialog):
 
         root.addWidget(left_card)
 
-        # 2. COLUMNA CENTRAL: VISTA PREVIA 4 DIRECCIONES (ADELANTE, ATRÁS, IZQ, DER)
+        # 2. COLUMNA CENTRAL: VISTA PREVIA 4 DIRECCIONES
         center_card = QFrame()
         center_card.setObjectName("Card")
         center_layout = QVBoxLayout(center_card)
@@ -254,7 +259,7 @@ class CharacterCreatorDialog(QDialog):
         center_layout.setSpacing(8)
 
         top_prev = QHBoxLayout()
-        lbl_prev = QLabel("🎮 VISTA PREVIA (4 DIRECCIONES)")
+        lbl_prev = QLabel("🎮 VISTA PREVIA DETALLADA (4 DIRECCIONES)")
         lbl_prev.setObjectName("SectionTitle")
         top_prev.addWidget(lbl_prev)
         top_prev.addStretch()
@@ -270,7 +275,7 @@ class CharacterCreatorDialog(QDialog):
 
         hint_lbl = QLabel(
             "💡 Pixelavity asigna tus personajes al azar a cada agente activo sin repetirlos. "
-            "Solo se repite alguno cuando hay más agentes trabajando simultáneamente que personajes creados."
+            "Solo se repite alguno cuando hay más agentes trabajando simultáneamente que personajes en tu lista."
         )
         hint_lbl.setWordWrap(True)
         hint_lbl.setStyleSheet("color: #8b9bb4; font-size: 11px; padding: 6px; background: #131b2e; border-radius: 6px;")
@@ -278,10 +283,10 @@ class CharacterCreatorDialog(QDialog):
 
         root.addWidget(center_card, stretch=1)
 
-        # 3. COLUMNA DERECHA: CONTROLES DE PERSONALIZACIÓN POR CAPAS
+        # 3. COLUMNA DERECHA: ATRIBUTOS
         right_card = QFrame()
         right_card.setObjectName("Card")
-        right_card.setFixedWidth(340)
+        right_card.setFixedWidth(345)
         right_layout = QVBoxLayout(right_card)
         right_layout.setContentsMargins(14, 12, 14, 12)
         right_layout.setSpacing(10)
@@ -294,13 +299,11 @@ class CharacterCreatorDialog(QDialog):
         form.setHorizontalSpacing(10)
         form.setVerticalSpacing(10)
 
-        # Nombre
         form.addWidget(QLabel("Nombre:"), 0, 0)
         self.inp_name = QLineEdit()
         self.inp_name.textEdited.connect(self._on_field_edited)
         form.addWidget(self.inp_name, 0, 1, 1, 2)
 
-        # Piel
         form.addWidget(QLabel("Piel:"), 1, 0)
         self.cmb_skin = QComboBox()
         for st in SKIN_TONES:
@@ -311,7 +314,6 @@ class CharacterCreatorDialog(QDialog):
         self.btn_skin_col.clicked.connect(lambda: self._pick_color("skin_color", self.btn_skin_col))
         form.addWidget(self.btn_skin_col, 1, 2)
 
-        # Cara / Expresión
         form.addWidget(QLabel("Cara:"), 2, 0)
         self.cmb_face = QComboBox()
         for fs in FACE_STYLES:
@@ -319,8 +321,7 @@ class CharacterCreatorDialog(QDialog):
         self.cmb_face.currentIndexChanged.connect(self._on_field_edited)
         form.addWidget(self.cmb_face, 2, 1, 1, 2)
 
-        # Pelo (Estilo + Color)
-        form.addWidget(QLabel("Pelo:"), 3, 0)
+        form.addWidget(QLabel("Peinado:"), 3, 0)
         self.cmb_hair = QComboBox()
         for hs in HAIR_STYLES:
             self.cmb_hair.addItem(hs["name"], hs["id"])
@@ -330,7 +331,6 @@ class CharacterCreatorDialog(QDialog):
         self.btn_hair_col.clicked.connect(lambda: self._pick_color("hair_color", self.btn_hair_col))
         form.addWidget(self.btn_hair_col, 3, 2)
 
-        # Ropa (Estilo + Color Superior + Color Inferior)
         form.addWidget(QLabel("Ropa:"), 4, 0)
         self.cmb_outfit = QComboBox()
         for os_item in OUTFIT_STYLES:
@@ -346,7 +346,6 @@ class CharacterCreatorDialog(QDialog):
         self.btn_bot_col.clicked.connect(lambda: self._pick_color("bottom_color", self.btn_bot_col))
         form.addWidget(self.btn_bot_col, 5, 2)
 
-        # Zapatos (Estilo + Color)
         form.addWidget(QLabel("Zapatos:"), 6, 0)
         self.cmb_shoes = QComboBox()
         for sh in SHOE_STYLES:
@@ -357,7 +356,6 @@ class CharacterCreatorDialog(QDialog):
         self.btn_shoe_col.clicked.connect(lambda: self._pick_color("shoe_color", self.btn_shoe_col))
         form.addWidget(self.btn_shoe_col, 6, 2)
 
-        # Accesorios / Sombrero
         form.addWidget(QLabel("Accesorio:"), 7, 0)
         self.cmb_acc = QComboBox()
         for ac in ACCESSORY_STYLES:
@@ -542,107 +540,301 @@ class CharacterCreatorDialog(QDialog):
             self.on_changed()
 
 
-class OfficeEditorBar(QFrame):
+# =============================================================================
+# MENÚ CONSTRUCTOR DE OFICINA POR CATEGORÍAS Y CUADRÍCULAS (ESTILO PIXEL AGENTS)
+# =============================================================================
+class OfficeBuilderDock(QFrame):
     """
-    Barra de herramientas para personalizar el Background (Pisos, Paredes, Dispositivos y Decoración).
-    Incluye validación de reglas mínimas (ej. mínimo 1 computador y 1 mueble de libros).
+    Panel constructor de oficina por cuadrículas (32x19 celdas).
+    Organizado en pestañas de categoría:
+      - 💻 Dispositivos
+      - 🪑 Muebles
+      - 🪴 Decoración
+      - 🎨 Pisos (con selector de Modo 1x1 Uno por Uno y Modo Rellenar / Bote)
+      - 🧱 Paredes (Colocar muro 1x1 o borrar muro 1x1)
+    Y modos de herramienta sobre la cuadrícula:
+      - "move":         Mover objetos de una cuadrícula a otra
+      - "place_object": Colocar el dispositivo/mueble/decoración elegido en la cuadrícula clicada
+      - "floor_1x1":    Pintar piso cuadrícula por cuadrícula (1x1)
+      - "floor_fill":   Rellenar piso (Flood-Fill en toda el área/habitación conectada)
+      - "wall_place":   Colocar bloque de pared 1x1 en la cuadrícula
+      - "wall_erase":   Borrar bloque de pared 1x1 en la cuadrícula
+      - "delete":       Eliminar objeto o pared de la cuadrícula
     """
 
-    def __init__(self, manager: CustomizationManager, on_layout_changed: Callable, parent=None):
+    def __init__(self, manager: CustomizationManager, on_state_changed: Callable, parent=None):
         super().__init__(parent)
         self.manager = manager
-        self.on_layout_changed = on_layout_changed
-        self.setObjectName("EditorBar")
+        self.on_state_changed = on_state_changed
+        self.setObjectName("BuilderDock")
+
+        self.active_category: str = "devices"
+        self.tool_mode: str = "move"  # move | place_object | floor_1x1 | floor_fill | wall_place | wall_erase | delete
+        self.selected_object_type: str = "computer_desk"
+        self.selected_floor_material: str = "walnut_wood"
+        self.selected_wall_material: str = "dark_tech"
+        self.floor_paint_submode: str = "floor_1x1"  # "floor_1x1" | "floor_fill"
+
+        self._item_buttons: Dict[str, QPushButton] = {}
         self._build_ui()
+        self._populate_category("devices")
 
     def _build_ui(self):
         self.setStyleSheet("""
-            QFrame#EditorBar {
-                background-color: #121a2b;
+            QFrame#BuilderDock {
+                background-color: #101726;
                 border: 1px solid #38bdf8;
-                border-radius: 9px;
+                border-radius: 10px;
             }
-            QLabel {
+            QPushButton#CatTab {
+                background-color: #151e30;
+                color: #94a3b8;
+                border: 1px solid #23324d;
+                border-radius: 6px;
+                padding: 5px 12px;
                 font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton#CatTab:checked {
+                background-color: rgba(56, 189, 248, 45);
+                color: #38bdf8;
+                border-color: #38bdf8;
+            }
+            QPushButton#ToolBtn {
+                background-color: #151e30;
                 color: #cbd5e1;
-            }
-            QComboBox {
-                background-color: #172238;
-                color: #ffffff;
-                border: 1px solid #2b3d5e;
-                border-radius: 5px;
-                padding: 3px 7px;
+                border: 1px solid #283754;
+                border-radius: 6px;
+                padding: 5px 10px;
                 font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton#ToolBtn:checked {
+                background-color: rgba(251, 191, 36, 45);
+                color: #fcd34d;
+                border-color: #fbbf24;
+            }
+            QPushButton#CatalogCard {
+                background-color: #162033;
+                color: #e2e8f0;
+                border: 1px solid #263654;
+                border-radius: 7px;
+                padding: 6px 11px;
+                font-size: 11px;
+                font-weight: 600;
+                text-align: left;
+            }
+            QPushButton#CatalogCard:hover {
+                background-color: #1d2a42;
+                border-color: #38bdf8;
+            }
+            QPushButton#CatalogCard:checked {
+                background-color: rgba(52, 211, 153, 38);
+                color: #34d399;
+                border: 1px solid #34d399;
             }
         """)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(8)
 
-        # 1. Selector de Piso (clic en sala para pintar)
-        layout.addWidget(QLabel("🎨 Piso al clicar sala:"))
-        self.cmb_floor = QComboBox()
-        for fid, fspec in FLOOR_MATERIALS.items():
-            self.cmb_floor.addItem(fspec["name"], fid)
-        layout.addWidget(self.cmb_floor)
+        main_v = QVBoxLayout(self)
+        main_v.setContentsMargins(10, 8, 10, 8)
+        main_v.setSpacing(7)
 
-        # 2. Paredes ON/OFF
-        self.chk_walls = QCheckBox("Paredes")
-        self.chk_walls.setChecked(bool(self.manager.get_office_layout().get("show_room_walls", True)))
-        self.chk_walls.toggled.connect(self._on_walls_toggled)
-        layout.addWidget(self.chk_walls)
+        # FILA 1: PESTAÑAS DE CATEGORÍAS + HERRAMIENTAS DE CUADRÍCULA
+        top_row = QHBoxLayout()
+        top_row.setSpacing(6)
 
-        # 3. Agregar Dispositivo Interactivo
-        layout.addWidget(QLabel("|  Dispositivo:"))
-        self.cmb_device = QComboBox()
-        for dtype, dspec in DEVICE_CATALOG.items():
-            self.cmb_device.addItem(f"{dspec['icon']} {dspec['name']}", dtype)
-        layout.addWidget(self.cmb_device)
+        self.cat_group = QButtonGroup(self)
+        self.cat_group.setExclusive(True)
 
-        btn_add_dev = QPushButton("➕ Añadir")
-        btn_add_dev.clicked.connect(self._on_add_device)
-        layout.addWidget(btn_add_dev)
+        categories = [
+            ("devices",     "💻 Dispositivos"),
+            ("furniture",   "🪑 Muebles"),
+            ("decorations", "🪴 Decoración"),
+            ("floors",      "🎨 Pisos"),
+            ("walls",       "🧱 Paredes"),
+        ]
+        self.cat_buttons: Dict[str, QPushButton] = {}
+        for cid, clabel in categories:
+            btn = QPushButton(clabel)
+            btn.setObjectName("CatTab")
+            btn.setCheckable(True)
+            if cid == "devices":
+                btn.setChecked(True)
+            btn.clicked.connect(lambda checked=False, c=cid: self._populate_category(c))
+            self.cat_group.addButton(btn)
+            self.cat_buttons[cid] = btn
+            top_row.addWidget(btn)
 
-        # 4. Agregar Decoración
-        layout.addWidget(QLabel("|  Decoración:"))
-        self.cmb_dec = QComboBox()
-        for dtype, dspec in DECORATION_CATALOG.items():
-            self.cmb_dec.addItem(f"{dspec['icon']} {dspec['name']}", dtype)
-        layout.addWidget(self.cmb_dec)
+        top_row.addSpacing(12)
 
-        btn_add_dec = QPushButton("➕ Añadir")
-        btn_add_dec.clicked.connect(self._on_add_decoration)
-        layout.addWidget(btn_add_dec)
+        # Modos específicos de Piso (visibles o activos al pintar pisos)
+        self.btn_floor_1x1 = QPushButton("🖌️ Piso: 1x1 (Uno por uno)")
+        self.btn_floor_1x1.setObjectName("ToolBtn")
+        self.btn_floor_1x1.setCheckable(True)
+        self.btn_floor_1x1.setChecked(True)
+        self.btn_floor_1x1.clicked.connect(lambda: self._set_floor_submode("floor_1x1"))
+        top_row.addWidget(self.btn_floor_1x1)
 
-        layout.addStretch()
+        self.btn_floor_fill = QPushButton("🪣 Piso: Rellenar Zona")
+        self.btn_floor_fill.setObjectName("ToolBtn")
+        self.btn_floor_fill.setCheckable(True)
+        self.btn_floor_fill.clicked.connect(lambda: self._set_floor_submode("floor_fill"))
+        top_row.addWidget(self.btn_floor_fill)
 
-        hint = QLabel("🖱️ Arrastra muebles con clic izq · Clic der para eliminar")
-        hint.setStyleSheet("color: #38bdf8; font-weight: 600; font-size: 10.5px;")
-        layout.addWidget(hint)
+        top_row.addStretch()
+
+        # Herramientas generales de cuadrícula
+        self.btn_tool_move = QPushButton("🖐️ Mover en Cuadrícula")
+        self.btn_tool_move.setObjectName("ToolBtn")
+        self.btn_tool_move.setCheckable(True)
+        self.btn_tool_move.clicked.connect(lambda: self._set_explicit_tool("move"))
+        top_row.addWidget(self.btn_tool_move)
+
+        self.btn_tool_del = QPushButton("🗑️ Borrador")
+        self.btn_tool_del.setObjectName("ToolBtn")
+        self.btn_tool_del.setCheckable(True)
+        self.btn_tool_del.clicked.connect(lambda: self._set_explicit_tool("delete"))
+        top_row.addWidget(self.btn_tool_del)
 
         btn_reset = QPushButton("↺ Restaurar Mapa")
-        btn_reset.clicked.connect(self._on_reset_office)
-        layout.addWidget(btn_reset)
+        btn_reset.setObjectName("ToolBtn")
+        btn_reset.clicked.connect(self._reset_map)
+        top_row.addWidget(btn_reset)
 
-    def selected_floor_material(self) -> str:
-        return self.cmb_floor.currentData() or "walnut_wood"
+        main_v.addLayout(top_row)
 
-    def _on_walls_toggled(self, checked: bool):
-        self.manager.set_show_room_walls(checked)
-        self.on_layout_changed()
+        # FILA 2: CARRUSEL HORIZONTAL DE ÍTEMS DE LA CATEGORÍA SELECCIONADA
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(48)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
-    def _on_add_device(self):
-        dtype = self.cmb_device.currentData()
-        # Colocar cerca del centro del mapa para que el usuario lo arrastre a donde quiera
-        self.manager.add_device(dtype, random.randint(240, 780), random.randint(180, 420))
-        self.on_layout_changed()
+        self.items_container = QWidget()
+        self.items_layout = QHBoxLayout(self.items_container)
+        self.items_layout.setContentsMargins(0, 2, 0, 2)
+        self.items_layout.setSpacing(6)
+        scroll.setWidget(self.items_container)
+        main_v.addWidget(scroll)
 
-    def _on_add_decoration(self):
-        dtype = self.cmb_dec.currentData()
-        self.manager.add_decoration(dtype, random.randint(200, 820), random.randint(160, 450))
-        self.on_layout_changed()
+    def _sync_tool_buttons(self):
+        self.btn_tool_move.setChecked(self.tool_mode == "move")
+        self.btn_tool_del.setChecked(self.tool_mode == "delete")
+        is_floor_cat = (self.active_category == "floors")
+        self.btn_floor_1x1.setVisible(is_floor_cat)
+        self.btn_floor_fill.setVisible(is_floor_cat)
+        self.btn_floor_1x1.setChecked(self.floor_paint_submode == "floor_1x1" and self.tool_mode == "floor_1x1")
+        self.btn_floor_fill.setChecked(self.floor_paint_submode == "floor_fill" and self.tool_mode == "floor_fill")
 
-    def _on_reset_office(self):
+    def _set_floor_submode(self, submode: str):
+        self.floor_paint_submode = submode
+        self.tool_mode = submode
+        self._sync_tool_buttons()
+        self.on_state_changed()
+
+    def _set_explicit_tool(self, tmode: str):
+        self.tool_mode = tmode
+        for b in self._item_buttons.values():
+            b.setChecked(False)
+        self._sync_tool_buttons()
+        self.on_state_changed()
+
+    def _populate_category(self, category_id: str):
+        self.active_category = category_id
+        while self.items_layout.count():
+            child = self.items_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self._item_buttons.clear()
+
+        if category_id in ("devices", "furniture", "decorations"):
+            first_key = None
+            for okey, spec in OBJECT_CATALOG.items():
+                if spec["category"] != category_id:
+                    continue
+                if first_key is None:
+                    first_key = okey
+                size_tag = f"[{spec['tile_w']}x{spec['tile_h']}]"
+                btn = QPushButton(f"{spec['icon']} {spec['name']} {size_tag}")
+                btn.setObjectName("CatalogCard")
+                btn.setCheckable(True)
+                btn.clicked.connect(lambda checked=False, k=okey: self._select_object_item(k))
+                self.items_layout.addWidget(btn)
+                self._item_buttons[okey] = btn
+
+            self.items_layout.addStretch()
+            if first_key:
+                self._select_object_item(first_key)
+
+        elif category_id == "floors":
+            first_mat = None
+            for fkey, fspec in FLOOR_MATERIALS.items():
+                if first_mat is None:
+                    first_mat = fkey
+                btn = QPushButton(f"⬛ {fspec['name']}")
+                btn.setObjectName("CatalogCard")
+                btn.setCheckable(True)
+                btn.setStyleSheet(
+                    f"QPushButton#CatalogCard {{ border-left: 5px solid {fspec['colorA']}; }}"
+                )
+                btn.clicked.connect(lambda checked=False, k=fkey: self._select_floor_item(k))
+                self.items_layout.addWidget(btn)
+                self._item_buttons[fkey] = btn
+
+            self.items_layout.addStretch()
+            if first_mat:
+                self._select_floor_item(self.selected_floor_material or first_mat)
+
+        elif category_id == "walls":
+            for wkey, wspec in WALL_MATERIALS.items():
+                btn = QPushButton(f"🧱 {wspec['name']} [1x1]")
+                btn.setObjectName("CatalogCard")
+                btn.setCheckable(True)
+                btn.clicked.connect(lambda checked=False, k=wkey: self._select_wall_item(k))
+                self.items_layout.addWidget(btn)
+                self._item_buttons[wkey] = btn
+
+            btn_erase_wall = QPushButton("🚪 Abrir Puerta / Borrar Pared [1x1]")
+            btn_erase_wall.setObjectName("CatalogCard")
+            btn_erase_wall.setCheckable(True)
+            btn_erase_wall.clicked.connect(self._select_wall_eraser)
+            self.items_layout.addWidget(btn_erase_wall)
+            self._item_buttons["__erase_wall__"] = btn_erase_wall
+
+            self.items_layout.addStretch()
+            self._select_wall_item(self.selected_wall_material)
+
+    def _select_object_item(self, obj_key: str):
+        self.selected_object_type = obj_key
+        self.tool_mode = "place_object"
+        for k, b in self._item_buttons.items():
+            b.setChecked(k == obj_key)
+        self._sync_tool_buttons()
+        self.on_state_changed()
+
+    def _select_floor_item(self, mat_key: str):
+        self.selected_floor_material = mat_key
+        self.tool_mode = self.floor_paint_submode
+        for k, b in self._item_buttons.items():
+            b.setChecked(k == mat_key)
+        self._sync_tool_buttons()
+        self.on_state_changed()
+
+    def _select_wall_item(self, wall_key: str):
+        self.selected_wall_material = wall_key
+        self.tool_mode = "wall_place"
+        for k, b in self._item_buttons.items():
+            b.setChecked(k == wall_key)
+        self._sync_tool_buttons()
+        self.on_state_changed()
+
+    def _select_wall_eraser(self):
+        self.tool_mode = "wall_erase"
+        for k, b in self._item_buttons.items():
+            b.setChecked(k == "__erase_wall__")
+        self._sync_tool_buttons()
+        self.on_state_changed()
+
+    def _reset_map(self):
         self.manager.reset_office_to_default()
-        self.chk_walls.setChecked(True)
-        self.on_layout_changed()
+        self.on_state_changed()

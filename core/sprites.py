@@ -1,50 +1,36 @@
 # -*- coding: utf-8 -*-
 """
-Pixelavity - Motor de Sprites Pixel Art Chibi (4 Direcciones + Animación)
-Renderiza personajes estilo Chibi Pixel Art con contorno oscuro (#23110d) inspirados
-en la imagen de referencia adjunta por el usuario, con soporte completo para:
-  - 4 Direcciones: "down" (Adelante), "up" (Atrás), "left" (Izquierda), "right" (Derecha)
-  - 4 Frames de caminata (0: reposo, 1: paso izq, 2: neutro, 3: paso der)
-  - Personalización por capas: Piel, Cara/Expresión, Pelo (9 estilos), Ropa (8 estilos),
-    Zapatos (3 estilos) y Accesorios/Sombreros (10 estilos).
-  - Caché de QPixmap de alta velocidad para renderizado a 60 FPS en PyQt6.
+Pixelavity - Motor de Sprites Pixel Art Chibi de Alto Detalle (4 Direcciones)
+Fiel a la estética de la imagen de referencia:
+  - Piernas juntas con costura central de 1-2px de contorno oscuro (#23110d)
+  - Peinados con flequillos diagonales asimétricos, líneas de contorno interior,
+    coletas altas con moño grande, melenas largas laterales, moño esquinado,
+    dos coletas altas tipo alas y ondas con volumen.
+  - 4 Direcciones reales: Adelante (down), Atrás (up), Izquierda (left), Derecha (right)
+  - 4 Frames de caminata fluida.
 """
 
-from typing import Dict, Any, Tuple, Optional
-from PyQt6.QtCore import Qt, QRect
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor
+from typing import Dict, Any, Tuple, List
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QImage, QPixmap, QColor
 
 
 OUTLINE = "#23110d"
-WHITE = "#fff8f0"
+WHITE = "#fff9f2"
 
 
-def _darken(hex_color: str, factor: float = 0.78) -> str:
+def _shade(hex_color: str, factor: float) -> str:
     c = QColor(hex_color or "#38bdf8")
     return QColor(
-        max(0, int(c.red() * factor)),
-        max(0, int(c.green() * factor)),
-        max(0, int(c.blue() * factor)),
-    ).name()
-
-
-def _lighten(hex_color: str, factor: float = 1.22) -> str:
-    c = QColor(hex_color or "#38bdf8")
-    return QColor(
-        min(255, int(c.red() * factor)),
-        min(255, int(c.green() * factor)),
-        min(255, int(c.blue() * factor)),
+        max(0, min(255, int(c.red() * factor))),
+        max(0, min(255, int(c.green() * factor))),
+        max(0, min(255, int(c.blue() * factor))),
     ).name()
 
 
 class ChibiSpriteRenderer:
-    """
-    Genera y almacena en caché sprites de 22x28 píxeles lógicos escalados con Nearest-Neighbor
-    para conservar bordes 100% pixel art nítidos.
-    """
-
-    GRID_W = 22
-    GRID_H = 28
+    GRID_W = 28
+    GRID_H = 34
 
     def __init__(self):
         self._cache: Dict[Tuple, QPixmap] = {}
@@ -52,13 +38,13 @@ class ChibiSpriteRenderer:
     def clear_cache(self):
         self._cache.clear()
 
-    def _char_cache_key(
+    def _cache_key(
         self,
         char: Dict[str, Any],
         direction: str,
         walk_frame: int,
         scale: int,
-        is_typing: bool = False,
+        is_typing: bool,
     ) -> Tuple:
         return (
             char.get("skin_color", "#ffcca8"),
@@ -88,11 +74,11 @@ class ChibiSpriteRenderer:
     ) -> QPixmap:
         if direction not in ("down", "up", "left", "right"):
             direction = "down"
-        key = self._char_cache_key(char, direction, walk_frame, scale, is_typing)
+        key = self._cache_key(char, direction, walk_frame, scale, is_typing)
         if key in self._cache:
             return self._cache[key]
 
-        img = self._render_grid_image(char, direction, walk_frame % 4, is_typing)
+        img = self._render_character(char, direction, walk_frame % 4, is_typing)
         scaled = img.scaled(
             self.GRID_W * scale,
             self.GRID_H * scale,
@@ -100,390 +86,714 @@ class ChibiSpriteRenderer:
             Qt.TransformationMode.FastTransformation,
         )
         pix = QPixmap.fromImage(scaled)
-        if len(self._cache) > 1200:
+        if len(self._cache) > 1500:
             self._cache.clear()
         self._cache[key] = pix
         return pix
 
-    def _render_grid_image(
+    def _render_character(
         self,
         char: Dict[str, Any],
         direction: str,
         walk_frame: int,
         is_typing: bool,
     ) -> QImage:
-        # Si es "right", renderizamos "left" y espejamos horizontalmente para simetría pixel-perfect
         if direction == "right":
-            left_img = self._render_grid_image(char, "left", walk_frame, is_typing)
-            return left_img.mirrored(True, False)
+            return self._render_character(char, "left", walk_frame, is_typing).mirrored(True, False)
 
         img = QImage(self.GRID_W, self.GRID_H, QImage.Format.Format_ARGB32)
         img.fill(Qt.GlobalColor.transparent)
 
         skin = char.get("skin_color", "#ffcca8")
-        skin_sh = _darken(skin, 0.86)
+        skin_sh = _shade(skin, 0.86)
+
+        hair_col = char.get("hair_color", "#eab308")
+        hair_sh = _shade(hair_col, 0.76)
+        hair_hi = _shade(hair_col, 1.18)
+
+        top_col = char.get("top_color", "#334155")
+        top_sh = _shade(top_col, 0.78)
+
+        bot_col = char.get("bottom_color", "#1e293b")
+        bot_sh = _shade(bot_col, 0.78)
+
+        shoe_col = char.get("shoe_color", "#451a03")
+        shoe_sh = _shade(shoe_col, 0.75)
+
+        acc_col = char.get("accessory_color", "#ef4444")
+        acc_hi = _shade(acc_col, 1.25)
+
         face_style = char.get("face_style", "smile")
         hair_style = char.get("hair_style", "short_parted")
-        hair_col = char.get("hair_color", "#eab308")
-        hair_sh = _darken(hair_col, 0.76)
-        hair_hi = _lighten(hair_col, 1.18)
         outfit = char.get("outfit_style", "suit_tie")
-        top_col = char.get("top_color", "#334155")
-        top_sh = _darken(top_col, 0.75)
-        bot_col = char.get("bottom_color", "#1e293b")
-        bot_sh = _darken(bot_col, 0.75)
         shoe_style = char.get("shoe_style", "classic")
-        shoe_col = char.get("shoe_color", "#451a03")
         acc = char.get("accessory", "none")
-        acc_col = char.get("accessory_color", "#ef4444")
 
-        def px(x: int, y: int, c: str):
+        palette = {
+            "O": OUTLINE,
+            "W": WHITE,
+            "K": skin,
+            "k": skin_sh,
+            "H": hair_col,
+            "h": hair_sh,
+            "L": hair_hi,
+            "T": top_col,
+            "t": top_sh,
+            "B": bot_col,
+            "b": bot_sh,
+            "Z": shoe_col,
+            "z": shoe_sh,
+            "A": acc_col,
+            "e": acc_hi,
+            "G": "#7dd3fc",
+            "g": "#e0f2fe",
+            "Y": "#facc15",
+            "M": "#64748b",
+            "m": "#475569",
+            "D": "#334155",
+            "N": "#1e293b",
+            "P": "#f472b6",
+            "F": "#fde047",
+            "f": "#eab308",
+        }
+
+        def px(x: int, y: int, col_hex: str):
             if 0 <= x < self.GRID_W and 0 <= y < self.GRID_H:
-                img.setPixelColor(x, y, QColor(c))
+                img.setPixelColor(x, y, QColor(col_hex))
 
-        def rect(x0: int, y0: int, w: int, h: int, c: str):
-            qc = QColor(c)
-            for yy in range(y0, y0 + h):
-                for xx in range(x0, x0 + w):
-                    if 0 <= xx < self.GRID_W and 0 <= yy < self.GRID_H:
-                        img.setPixelColor(xx, yy, qc)
+        def stamp(x0: int, y0: int, rows: List[str]):
+            for dy, row_str in enumerate(rows):
+                yy = y0 + dy
+                if not (0 <= yy < self.GRID_H):
+                    continue
+                for dx, ch_code in enumerate(row_str):
+                    if ch_code in (".", " "):
+                        continue
+                    xx = x0 + dx
+                    if 0 <= xx < self.GRID_W and ch_code in palette:
+                        img.setPixelColor(xx, yy, QColor(palette[ch_code]))
 
-        # Desplazamientos de piernas y brazos por caminata
-        leg_l_dy = -1 if walk_frame == 1 else (0 if walk_frame != 3 else 0)
+        leg_l_dy = -1 if walk_frame == 1 else 0
         leg_r_dy = -1 if walk_frame == 3 else 0
         arm_l_dy = 1 if (walk_frame == 1 or is_typing) else (-1 if walk_frame == 3 else 0)
         arm_r_dy = -1 if (walk_frame == 1 or is_typing) else (1 if walk_frame == 3 else 0)
 
-        # ---------------------------------------------------------------------
-        # 1. PELO TRASERO (Para estilos largos o cuando mira hacia adelante/lado)
-        # ---------------------------------------------------------------------
-        if hair_style == "long_straight" and direction in ("down", "left"):
-            rect(5, 11, 12, 8, OUTLINE)
-            rect(6, 11, 10, 7, hair_sh)
-        elif hair_style == "wavy_bob" and direction in ("down", "left"):
-            rect(4, 10, 14, 6, OUTLINE)
-            rect(5, 10, 12, 5, hair_sh)
-        elif hair_style == "ponytail":
-            if direction == "down":
-                # Coleta asomando a la derecha con moño (igual a fila 3 col 1 de la imagen)
-                rect(15, 7, 4, 6, OUTLINE)
-                rect(16, 8, 2, 4, hair_col)
-                px(15, 7, acc_col)
-                px(16, 7, WHITE)
-            elif direction == "left":
-                rect(15, 8, 5, 6, OUTLINE)
-                rect(16, 9, 3, 4, hair_col)
-                px(15, 8, acc_col)
-        elif hair_style == "pigtails" and direction in ("down", "up"):
-            # Dos coletas altas a ambos lados
-            rect(2, 6, 4, 7, OUTLINE)
-            rect(3, 7, 2, 5, hair_col)
-            rect(16, 6, 4, 7, OUTLINE)
-            rect(17, 7, 2, 5, hair_col)
-            px(5, 7, acc_col)
-            px(16, 7, acc_col)
-        elif hair_style == "top_bun":
-            # Moño alto en la coronilla
-            rect(8, 2, 6, 4, OUTLINE)
-            rect(9, 3, 4, 2, hair_col)
+        # 1. CABELLO TRASERO (Melenas, coletas laterales, moños)
+        self._draw_back_hair(stamp, hair_style, direction, walk_frame)
 
-        # ---------------------------------------------------------------------
-        # 2. PIERNAS Y ZAPATOS (y: 21..26)
-        # ---------------------------------------------------------------------
-        if outfit == "cloak":
-            # Capa larga de mago/arquitecto hasta los pies
-            rect(6, 16, 10, 10, OUTLINE)
-            rect(7, 16, 8, 9, top_col)
-            rect(10, 16, 2, 9, top_sh)
-            # Punta de zapatos asomando abajo
-            rect(6, 25, 4, 2, OUTLINE)
-            rect(12, 25, 4, 2, OUTLINE)
-            px(7, 25, shoe_col)
-            px(13, 25, shoe_col)
-        else:
-            # Pierna Izquierda (x: 7..10) y Pierna Derecha (x: 11..14)
-            if direction in ("down", "up"):
-                # Contorno exterior de piernas y separación central en x=10,11
-                rect(7, 20, 4, 7 + leg_l_dy, OUTLINE)
-                rect(11, 20, 4, 7 + leg_r_dy, OUTLINE)
+        # 2. CUERPO COMPACTO Y PIERNAS JUNTAS (y: 19..32, idéntico en proporciones a ref_sprites.png)
+        self._draw_body_and_legs(stamp, outfit, shoe_style, direction, walk_frame, leg_l_dy, leg_r_dy, arm_l_dy, arm_r_dy)
 
-                if outfit == "dress_skirt":
-                    # Falda en y: 20..22 + piernas color piel en y: 23..24
-                    rect(7, 20, 8, 3, OUTLINE)
-                    rect(8, 20, 6, 2, bot_col)
-                    rect(8, 22, 2, 2 + leg_l_dy, skin)
-                    rect(12, 22, 2, 2 + leg_r_dy, skin)
-                else:
-                    # Pantalón
-                    rect(8, 20, 2, 4 + leg_l_dy, bot_col)
-                    rect(12, 20, 2, 4 + leg_r_dy, bot_col)
+        # 3. CABEZA CHIBI (x: 7..20, y: 7..19)
+        head_rows = [
+            "...OOOOOOOOOO...",
+            "..OKKKKKKKKKKO..",
+            ".OKKKKKKKKKKKKO.",
+            ".OKKKKKKKKKKKKO.",
+            "OKKKKKKKKKKKKKKO",
+            "OKKKKKKKKKKKKKKO",
+            "OKKKKKKKKKKKKKKO",
+            "OKKKKKKKKKKKKKKO",
+            "OKKKKKKKKKKKKKKO",
+            ".OKKKKKKKKKKKkO.",
+            "..OKKKKKKKKKkO..",
+            "...OOOOOOOOOO...",
+        ]
+        stamp(6, 8, head_rows)
 
-                # Zapatos
-                sy_l = 24 + leg_l_dy
-                sy_r = 24 + leg_r_dy
-                rect(8, sy_l, 2, 2, shoe_col)
-                rect(12, sy_r, 2, 2, shoe_col)
-                if shoe_style == "sneakers":
-                    px(8, sy_l + 1, WHITE)
-                    px(12, sy_r + 1, WHITE)
-                elif shoe_style == "boots":
-                    rect(8, sy_l - 1, 2, 2, shoe_col)
-                    rect(12, sy_r - 1, 2, 2, shoe_col)
-            else:
-                # Vista lateral ("left"): piernas de perfil con paso adelante/atrás
-                step_spread = 1 if walk_frame in (1, 3) else 0
-                rect(8 - step_spread, 20, 6 + step_spread * 2, 7, OUTLINE)
-                if outfit == "dress_skirt":
-                    rect(9 - step_spread, 20, 4 + step_spread, 2, bot_col)
-                    rect(9 - step_spread, 22, 2, 2, skin)
-                    rect(11, 22, 2, 2, skin_sh)
-                else:
-                    rect(9 - step_spread, 20, 2, 4, bot_col)
-                    rect(11, 20, 2, 4, bot_sh)
-                rect(9 - step_spread, 24, 2, 2, shoe_col)
-                rect(11, 24, 2, 2, _darken(shoe_col, 0.8))
-                if shoe_style == "sneakers":
-                    px(9 - step_spread, 25, WHITE)
+        # 4. OJOS Y SONRISA (Adelante y Perfil Izquierdo)
+        self._draw_face(px, face_style, direction)
 
-        # ---------------------------------------------------------------------
-        # 3. TORSO Y BRAZOS (y: 15..20)
-        # ---------------------------------------------------------------------
-        if outfit != "cloak":
-            # Torso central (x: 7..14, y: 15..20)
-            rect(7, 15, 8, 6, OUTLINE)
-            rect(8, 16, 6, 4, top_col)
+        # 5. PEINADOS ESCULPIDOS CON FLEQUILLO DIAGONAL Y VOLUMEN LATERAL
+        self._draw_sculpted_hair(stamp, hair_style, direction)
 
-            # Detalles del torso según el estilo de ropa
-            if direction == "down":
-                if outfit == "suit_tie":
-                    # Camisa blanca y corbata
-                    rect(10, 16, 2, 3, WHITE)
-                    px(10, 16, acc_col)
-                    px(11, 17, acc_col)
-                elif outfit == "vest_shirt":
-                    rect(10, 16, 2, 4, WHITE)
-                    px(10, 18, OUTLINE)
-                elif outfit == "overalls":
-                    # Tirantes y pechera de jardinera en bottom_color
-                    rect(9, 17, 4, 3, bot_col)
-                    px(9, 16, bot_col)
-                    px(12, 16, bot_col)
-                elif outfit == "hoodie":
-                    rect(9, 18, 4, 2, top_sh)
-                elif outfit == "tank_top":
-                    px(10, 16, skin)
-                    px(11, 16, skin)
-
-            # Brazos
-            arm_skin = outfit in ("tshirt_jeans", "tank_top", "dress_skirt", "overalls")
-            sleeve_c = skin if outfit == "tank_top" else (WHITE if outfit == "vest_shirt" else top_col)
-
-            if direction in ("down", "up"):
-                # Brazo izquierdo (x: 5..6) y derecho (x: 15..16)
-                rect(5, 16 + arm_l_dy, 3, 5, OUTLINE)
-                rect(6, 17 + arm_l_dy, 1, 2, sleeve_c)
-                px(6, 19 + arm_l_dy, skin if arm_skin else sleeve_c)
-                px(6, 19 + arm_l_dy, skin)
-
-                rect(14, 16 + arm_r_dy, 3, 5, OUTLINE)
-                rect(15, 17 + arm_r_dy, 1, 2, sleeve_c)
-                px(15, 19 + arm_r_dy, skin)
-            else:
-                # Vista lateral ("left"): brazo visible en el centro del torso con balanceo
-                ax = 10 + (1 if walk_frame == 1 else (-1 if walk_frame == 3 else 0))
-                rect(ax, 16, 4, 5, OUTLINE)
-                rect(ax + 1, 17, 2, 2, sleeve_c)
-                rect(ax + 1, 19, 2, 1, skin)
-
-        # ---------------------------------------------------------------------
-        # 4. CABEZA CHIBI CON CONTORNO COMPLETO (y: 5..15, x: 5..16)
-        # ---------------------------------------------------------------------
-        # Contorno redondeado de la cabeza
-        rect(6, 5, 10, 11, OUTLINE)
-        rect(5, 6, 12, 9, OUTLINE)
-        # Relleno de piel
-        rect(6, 6, 10, 9, skin)
-        # Sombra sutil en el borde inferior de la barbilla
-        rect(7, 14, 8, 1, skin_sh)
-
-        # ---------------------------------------------------------------------
-        # 5. RASGOS DE LA CARA SEGÚN DIRECCIÓN
-        # ---------------------------------------------------------------------
-        if direction == "down":
-            # Ojos verticales 1x2 estilo imagen de referencia
-            rect(8, 9, 1, 2, OUTLINE)
-            rect(13, 9, 1, 2, OUTLINE)
-            if face_style == "cool":
-                px(13, 9, skin)  # Guiño
-
-            # Boca / Sonrisa pixelada (╰‿╯)
-            if face_style in ("smile", "happy"):
-                px(9, 12, OUTLINE)
-                px(10, 13, OUTLINE)
-                px(11, 13, OUTLINE)
-                px(12, 12, OUTLINE)
-                if face_style == "happy":
-                    px(7, 11, "#f472b6")
-                    px(14, 11, "#f472b6")
-            elif face_style == "focused":
-                rect(9, 12, 4, 1, OUTLINE)
-            elif face_style == "cool":
-                px(10, 13, OUTLINE)
-                px(11, 13, OUTLINE)
-                px(12, 12, OUTLINE)
-
-        elif direction == "left":
-            # Ojos y sonrisa desplazados a la izquierda (perfil 3/4)
-            rect(7, 9, 1, 2, OUTLINE)
-            rect(10, 9, 1, 2, OUTLINE)
-            px(8, 12, OUTLINE)
-            px(9, 13, OUTLINE)
-            px(10, 12, OUTLINE)
-
-        # ---------------------------------------------------------------------
-        # 6. PELO SUPERIOR / FRONTAL / TRASERO SEGÚN DIRECCIÓN
-        # ---------------------------------------------------------------------
-        if hair_style != "bald":
-            if direction == "up":
-                # Vista trasera ("up"): el cabello cubre toda la nuca
-                rect(6, 5, 10, 10, OUTLINE)
-                rect(5, 6, 12, 8, OUTLINE)
-                rect(6, 6, 10, 8, hair_col)
-                rect(7, 12, 8, 2, hair_sh)
-                rect(8, 7, 6, 1, hair_hi)
-                if hair_style == "long_straight":
-                    rect(5, 12, 12, 7, OUTLINE)
-                    rect(6, 12, 10, 6, hair_col)
-                    rect(7, 16, 8, 2, hair_sh)
-                elif hair_style == "ponytail":
-                    rect(9, 8, 4, 8, OUTLINE)
-                    rect(10, 9, 2, 6, hair_sh)
-                    rect(10, 8, 2, 1, acc_col)
-                elif hair_style == "flat_top":
-                    rect(5, 3, 12, 5, OUTLINE)
-                    rect(6, 4, 10, 4, hair_col)
-            elif direction == "down":
-                if hair_style == "flat_top":
-                    rect(5, 3, 12, 5, OUTLINE)
-                    rect(6, 4, 10, 3, hair_col)
-                    rect(6, 7, 1, 3, hair_col)
-                    rect(15, 7, 1, 3, hair_col)
-                elif hair_style == "receding":
-                    rect(6, 5, 10, 2, OUTLINE)
-                    rect(6, 6, 2, 3, hair_col)
-                    rect(14, 6, 2, 3, hair_col)
-                else:
-                    # Casquete de cabello frontal con flequillo y volumen como en ref_sprites.png
-                    rect(5, 4, 12, 4, OUTLINE)
-                    rect(6, 5, 10, 3, hair_col)
-                    rect(7, 5, 6, 1, hair_hi)
-                    # Mechones laterales
-                    rect(6, 7, 2, 3, hair_col)
-                    rect(14, 7, 2, 3, hair_col)
-                    px(8, 7, hair_sh)
-            elif direction == "left":
-                if hair_style == "flat_top":
-                    rect(5, 3, 12, 5, OUTLINE)
-                    rect(6, 4, 10, 3, hair_col)
-                    rect(12, 7, 4, 6, hair_col)
-                else:
-                    rect(5, 4, 12, 4, OUTLINE)
-                    rect(6, 5, 10, 3, hair_col)
-                    # Parte posterior del pelo a la derecha (nuca de perfil)
-                    rect(12, 7, 4, 7, hair_col)
-                    rect(15, 7, 2, 7, OUTLINE)
-                    if hair_style == "long_straight":
-                        rect(12, 12, 5, 7, OUTLINE)
-                        rect(13, 12, 3, 6, hair_col)
-
-        # ---------------------------------------------------------------------
-        # 7. ACCESORIOS Y SOMBREROS (Los 10 estilos de la imagen de referencia)
-        # ---------------------------------------------------------------------
-        if acc == "headphones":
-            if direction in ("down", "up"):
-                rect(4, 8, 2, 5, OUTLINE)
-                px(5, 9, acc_col)
-                px(5, 10, acc_col)
-                rect(16, 8, 2, 5, OUTLINE)
-                px(16, 9, acc_col)
-                px(16, 10, acc_col)
-                rect(6, 4, 10, 1, acc_col)
-            else:
-                rect(11, 8, 3, 5, OUTLINE)
-                rect(12, 9, 1, 3, acc_col)
-                rect(11, 4, 2, 5, acc_col)
-
-        elif acc == "glasses" and direction in ("down", "left"):
-            if direction == "down":
-                rect(7, 8, 3, 3, OUTLINE)
-                rect(12, 8, 3, 3, OUTLINE)
-                rect(10, 9, 2, 1, OUTLINE)
-                px(8, 9, "#bae6fd")
-                px(13, 9, "#bae6fd")
-            else:
-                rect(6, 8, 3, 3, OUTLINE)
-                rect(9, 8, 3, 3, OUTLINE)
-                px(7, 9, "#bae6fd")
-                px(10, 9, "#bae6fd")
-
-        elif acc == "fedora":
-            # Sombrero detective con ala ancha y cinta (fila 1 col 1)
-            rect(3, 5, 16, 2, OUTLINE)
-            rect(6, 2, 10, 4, OUTLINE)
-            rect(7, 3, 8, 2, "#475569")
-            rect(7, 4, 8, 1, acc_col)
-
-        elif acc == "witch_hat":
-            # Sombrero de mago con punta y hebilla dorada (fila 1 col 2)
-            rect(3, 5, 16, 2, OUTLINE)
-            rect(6, 2, 10, 4, OUTLINE)
-            rect(8, 0, 7, 3, OUTLINE)
-            rect(7, 3, 8, 2, "#334155")
-            rect(9, 1, 4, 2, "#334155")
-            rect(7, 4, 8, 1, acc_col)
-            px(10, 4, "#facc15")
-
-        elif acc == "top_hat":
-            # Sombrero de copa (fila 1 col 3)
-            rect(4, 5, 14, 2, OUTLINE)
-            rect(6, 1, 10, 5, OUTLINE)
-            rect(7, 2, 8, 3, "#1e293b")
-            rect(7, 4, 8, 1, acc_col)
-
-        elif acc == "aviator_goggles":
-            # Casco con gafas celestes (fila 1 col 4)
-            rect(5, 4, 12, 4, OUTLINE)
-            rect(6, 5, 10, 2, "#eab308")
-            if direction != "up":
-                rect(7, 8, 8, 3, OUTLINE)
-                rect(8, 9, 6, 1, "#7dd3fc")
-
-        elif acc == "viking_helmet":
-            # Casco vikingo con cuernos (fila 2 col 1)
-            rect(5, 4, 12, 4, OUTLINE)
-            rect(6, 5, 10, 2, "#64748b")
-            rect(3, 2, 3, 4, OUTLINE)
-            px(4, 3, WHITE)
-            rect(16, 2, 3, 4, OUTLINE)
-            px(17, 3, WHITE)
-
-        elif acc == "nurse_cap":
-            # Gorro blanco con cruz (fila 2 col 3)
-            rect(6, 2, 10, 5, OUTLINE)
-            rect(7, 3, 8, 3, WHITE)
-            if direction != "up":
-                px(10, 4, acc_col)
-                px(11, 4, acc_col)
-
-        elif acc == "straw_hat":
-            # Sombrero de paja (fila 3 col 4)
-            rect(3, 5, 16, 2, OUTLINE)
-            rect(6, 2, 10, 4, OUTLINE)
-            rect(7, 3, 8, 2, "#facc15")
-            rect(4, 5, 14, 1, "#eab308")
+        # 6. SOMBREROS Y ACCESORIOS
+        self._draw_accessory(stamp, acc, direction)
 
         return img
 
+    def _draw_back_hair(self, stamp, hair_style: str, direction: str, walk_frame: int):
+        bob = -1 if walk_frame in (1, 3) else 0
+        if hair_style == "ponytail":
+            # Gran coleta alta lateral con moño de 2 lazos (idéntica a fila 3 col 1 de ref_sprites.png)
+            stamp(17, 5 + bob, [
+                "..OOOO....",
+                ".OAeeAO...",
+                "OOAOOAOO..",
+                ".OAOOHHOO.",
+                "..OOHLLHOO",
+                "...OHHHHhO",
+                "...OHHHHhO",
+                "...OOhhhhO",
+                "....OOOhOO",
+                "......OOO.",
+            ])
+        elif hair_style == "long_straight" and direction in ("down", "left"):
+            # Cortina de cabello largo que cae por el lado derecho hasta la cintura (fila 3 col 2 / fila 4 col 4)
+            stamp(16, 12 + bob, [
+                "..OOOOO.",
+                ".OHHHHHO",
+                ".OHHHHHO",
+                ".OHHHHhO",
+                ".OHHHHhO",
+                ".OHHHHhO",
+                ".OHHHhhO",
+                ".OOhhhhO",
+                "..OOhhhO",
+                "...OOOO.",
+            ])
+        elif hair_style == "wavy_bob" and direction in ("down", "left"):
+            # Onda curva baja que sobresale a la derecha a la altura del cuello (fila 3 col 3)
+            stamp(16, 13 + bob, [
+                "..OOOO..",
+                ".OHHHHO.",
+                ".OHHHHHO",
+                "OOHHHHhO",
+                "OOhhhhhO",
+                ".OOhhhO.",
+                "..OOOO..",
+            ])
+        elif hair_style == "pigtails":
+            # Dos coletas altas tipo alas a ambos lados de la cabeza (fila 3 col 5)
+            stamp(1, 4 + bob, [
+                "..OOOO..............OOOO..",
+                ".OHLLHO............OHLLHO.",
+                "OOHHHhOO..........OOHHHhOO",
+                "OHHHhhOO..........OOhhHHHO",
+                "OhhhOOO............OOOhhhO",
+                "OOOO..................OOOO",
+            ])
+        elif hair_style == "low_ponytail" and direction in ("down", "left"):
+            # Coleta baja de oficina que asoma a la altura del hombro (fila 2 col 2 y 4)
+            stamp(16, 14 + bob, [
+                "..OOOO..",
+                ".OHHHHO.",
+                ".OOHHHhO",
+                "..OOhhhO",
+                "...OOOO.",
+            ])
+        elif hair_style == "curly_afro":
+            # Volumen rizado redondo alrededor de toda la cabeza
+            stamp(3, 3 + bob, [
+                ".....OOOOOOOOOOOO.....",
+                "...OOHLLHHHHHHLLHOO...",
+                "..OHLHHHHHHHHHHHHLHO..",
+                ".OHHHHHHHHHHHHHHHHHHO.",
+                "OOHHHHHHHHHHHHHHHHHHOO",
+                "OOHHHHHHHHHHHHHHHHHHOO",
+                "OOhHHHHHHHHHHHHHHHHhOO",
+                ".OOhhhhhhhhhhhhhhhhOO.",
+                "..OOOOOOOOOOOOOOOOOO..",
+            ])
+        elif hair_style == "top_bun":
+            # Moño redondo alto inclinado en la esquina superior derecha (fila 4 col 1)
+            stamp(15, 3 + bob, [
+                "..OOOO..",
+                ".OHLLHO.",
+                "OOHHHhOO",
+                "OOhhhhOO",
+                ".OOOOOO.",
+            ])
 
-# Instancia global compartida para reutilizar caché de pixmaps
+    def _draw_sculpted_hair(self, stamp, hair_style: str, direction: str):
+        if hair_style == "bald":
+            return
+
+        if direction == "up":
+            # Vista trasera completa del cabello
+            if hair_style == "flat_top":
+                stamp(6, 4, [
+                    ".OOOOOOOOOOOOOO.",
+                    "OHLLLLLLLLLLLLHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OhhhhhhhhhhhhhhO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OhhhhhhhhhhhhhhO",
+                    ".OhhhhhhhhhhhhO.",
+                    "..OOOOOOOOOOOO..",
+                ])
+            else:
+                stamp(6, 5, [
+                    "..OOOOOOOOOOOO..",
+                    ".OHLLLLLLLLLLHO.",
+                    "OHLHHHHHHHHHHLHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OhhhhhhhhhhhhhhO",
+                    "OhhhhhOhhOhhhhhO",
+                    ".OhhhhOhhOhhhhO.",
+                    "..OOOOOOOOOOOO..",
+                ])
+                if hair_style == "long_straight":
+                    stamp(7, 15, [
+                        "OHHHHHHHHHHHHO",
+                        "OHHHHHHHHHHHHO",
+                        "OhhhhhhhhhhhhO",
+                        "OhhhhhhhhhhhhO",
+                        ".OhhhhhhhhhhO.",
+                        "..OOOOOOOOOO..",
+                    ])
+            return
+
+        if direction == "down":
+            if hair_style == "short_parted":
+                # Rubio con flequillo diagonal asimétrico y volumen lateral derecho (fila 2 col 5)
+                stamp(5, 5, [
+                    "....OOOOOOOOOO....",
+                    "..OOHLLLLLLLLHOO..",
+                    ".OOHLHHHHHHHHHHOO.",
+                    "OOHHHHHHHHHHHHHHOO",
+                    "OOHHHHHHOOOHHHHHHO",
+                    "OOHHHHOO...OOHHHHO",
+                    "OOHHOO.......OOHHO",
+                    ".OOO..........OHHO",
+                    "..............OhHO",
+                    "..............OhhO",
+                    "...............OO.",
+                ])
+            elif hair_style == "ponytail":
+                # Flequillo con raya diagonal marcada y contorno interior (fila 3 col 1)
+                stamp(6, 6, [
+                    "...OOOOOOOOOO...",
+                    "..OHLLLLLLLLHO..",
+                    ".OHLHHHHHHHHHHO.",
+                    "OOHHHHHHHOHHHHHO",
+                    "OHHHHHOOO.OOHHHO",
+                    "OHHHOO.....OOHHO",
+                    "OHOO.........OHO",
+                    ".OO...........OO",
+                ])
+            elif hair_style == "long_straight":
+                # Flequillo diagonal elegante + caída larga lateral (fila 3 col 2 / fila 4 col 4)
+                stamp(6, 6, [
+                    "...OOOOOOOOOO...",
+                    "..OHLLLLLLLLHO..",
+                    ".OHHHHHHHHHHHHO.",
+                    "OOHHHHHHOHHHHHHO",
+                    "OHHHHOOO.OOHHHHO",
+                    "OHHOO......OOHHO",
+                    "OHO.........OHHO",
+                    "OHO..........OHO",
+                    ".OO..........OHO",
+                ])
+            elif hair_style == "wavy_bob":
+                # Melena curva con raya lateral y volumen (fila 3 col 3)
+                stamp(5, 5, [
+                    "....OOOOOOOOOO....",
+                    "..OOHLLLLLLLLHOO..",
+                    ".OOHHHHHHHHHHHHOO.",
+                    "OOHHHHHHOOHHHHHHOO",
+                    "OOHHHHOO..OOHHHHOO",
+                    ".OOHHOO.....OOHHOO",
+                    "..OOO........OHHOO",
+                ])
+            elif hair_style == "pigtails":
+                # Flequillo con mechones laterales en las mejillas (fila 3 col 5)
+                stamp(4, 6, [
+                    ".....OOOOOOOOOO.....",
+                    "...OOHLLLLLLLLHOO...",
+                    "..OOHHHHHHHHHHHHOO..",
+                    "..OHHHHHOOOHHHHHHO..",
+                    ".OOHHHOO....OOHHHOO.",
+                    "OOHHOO........OOHHOO",
+                    ".OOOO..........OOOO.",
+                ])
+            elif hair_style == "top_bun":
+                # Cabello envolvente con raya lateral y caída en mejilla derecha (fila 4 col 1)
+                stamp(6, 6, [
+                    "...OOOOOOOOOO...",
+                    "..OHLLLLLLLLHO..",
+                    ".OHHHHHHHHHHHHO.",
+                    "OOHHHHHHOHHHHHHO",
+                    "OHHHHOOO.OOHHHHO",
+                    "OHHOO.....OOHHHO",
+                    "OHO........OOHHO",
+                    ".OO.........OHHO",
+                    "............OhhO",
+                    ".............OO.",
+                ])
+            elif hair_style == "flat_top":
+                # Corte alto cuadrado con línea frontal limpia (fila 4 col 5)
+                stamp(6, 4, [
+                    ".OOOOOOOOOOOOOO.",
+                    "OHLLLLLLLLLLLLHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OHHHHHHHHHHHHHHO",
+                    "OhhhhhhhhhhhhhhO",
+                    "OhhOOOOOOOOOOhhO",
+                    "OhO..........OhO",
+                    "OhO..........OhO",
+                    ".OO..........OO.",
+                ])
+            elif hair_style == "receding":
+                # Corte con entradas en M / pico de viuda (fila 1 col 5 y fila 4 col 2)
+                stamp(6, 6, [
+                    "...OOOOOOOOOO...",
+                    "..OHHLLLLLLHHO..",
+                    ".OHHOOOHOOOOHHO.",
+                    "OHHO...O....OHHO",
+                    "OhO..........OhO",
+                    "OhO..........OhO",
+                    ".OO..........OO.",
+                ])
+            elif hair_style == "low_ponytail":
+                # Cabello ejecutivo con flequillo diagonal amplio y coleta baja (fila 2 col 2 y 4)
+                stamp(5, 5, [
+                    "....OOOOOOOOOO....",
+                    "..OOHLLLLLLLLHOO..",
+                    ".OOHHHHHHHHHHHHOO.",
+                    "OOHHHHHHHOHHHHHHOO",
+                    "OOHHHHHOO.OOHHHHOO",
+                    "OOHHHOO....OOHHHOO",
+                    ".OOHHO.......OHHOO",
+                    "..OOO.........OHOO",
+                ])
+            elif hair_style == "spiky_messy":
+                # Peinado moderno con mechones en punta asimétricos
+                stamp(4, 3, [
+                    "...OO....OOO...OO...",
+                    "..OHHO..OHLHO.OHHO..",
+                    ".OOHHHOOHLHHHOHHHHO.",
+                    "OOHLHHHHHHHHHHHHHHOO",
+                    "OOHHHHOOHHHOOHHHHHHO",
+                    ".OOHHOO..OO..OOHHHOO",
+                    "..OOO..........OOOO.",
+                ])
+            elif hair_style == "curly_afro":
+                stamp(5, 5, [
+                    "...OOOOOOOOOOOO...",
+                    ".OOHLLHHHHHHLLHOO.",
+                    "OOHHHHHHHHHHHHHHOO",
+                    "OOHHHHOOOOOOHHHHOO",
+                    "OOHHOO......OOHHOO",
+                    ".OOO..........OOO.",
+                ])
+            return
+
+        # Vista lateral ("left"): Flequillo al frente (izquierda) y nuca cubierta (derecha)
+        if hair_style == "flat_top":
+            stamp(6, 4, [
+                ".OOOOOOOOOOOOOO.",
+                "OHLLLLLLLLLLLLHO",
+                "OHHHHHHHHHHHHHHO",
+                "OHHHHHHHHHHHHHHO",
+                "OhhhhhhhhhhhhhhO",
+                ".OOOOOOOHHHHHHhO",
+                ".......OOHHHHHhO",
+                "........OOhhhhhO",
+                ".........OOOhhhO",
+                "...........OOOO.",
+            ])
+        else:
+            stamp(6, 6, [
+                "...OOOOOOOOOO...",
+                "..OHLLLLLLLLHO..",
+                ".OHLHHHHHHHHHHO.",
+                "OOHHHHHOHHHHHHHO",
+                "OOHHOO..OHHHHHhO",
+                ".OOO....OOHHHHhO",
+                ".........OOhhhhO",
+                ".........OOhhhhO",
+                "..........OOhhhO",
+                "...........OOOO.",
+            ])
+
+    def _draw_face(self, px, face_style: str, direction: str):
+        if direction == "up":
+            return
+
+        if direction == "down":
+            # Ojos verticales 1x2 + sonrisa pixelada (proporción exacta de ref_sprites.png)
+            px(11, 13, OUTLINE)
+            px(11, 14, OUTLINE)
+            if face_style == "cool":
+                px(15, 14, OUTLINE)
+                px(16, 14, OUTLINE)
+            else:
+                px(16, 13, OUTLINE)
+                px(16, 14, OUTLINE)
+
+            if face_style in ("smile", "happy"):
+                px(11, 16, OUTLINE)
+                px(12, 17, OUTLINE)
+                px(13, 17, OUTLINE)
+                px(14, 17, OUTLINE)
+                px(15, 16, OUTLINE)
+                if face_style == "happy":
+                    px(9, 15, "#f472b6")
+                    px(18, 15, "#f472b6")
+            elif face_style == "focused":
+                px(12, 17, OUTLINE)
+                px(13, 17, OUTLINE)
+                px(14, 17, OUTLINE)
+            elif face_style == "cool":
+                px(12, 17, OUTLINE)
+                px(13, 17, OUTLINE)
+                px(14, 17, OUTLINE)
+                px(15, 16, OUTLINE)
+        else:
+            # Perfil izquierdo ("left")
+            px(9, 13, OUTLINE)
+            px(9, 14, OUTLINE)
+            px(13, 13, OUTLINE)
+            px(13, 14, OUTLINE)
+            px(9, 16, OUTLINE)
+            px(10, 17, OUTLINE)
+            px(11, 17, OUTLINE)
+            px(12, 16, OUTLINE)
+
+    def _draw_body_and_legs(
+        self,
+        stamp,
+        outfit: str,
+        shoe_style: str,
+        direction: str,
+        walk_frame: int,
+        leg_l_dy: int,
+        leg_r_dy: int,
+        arm_l_dy: int,
+        arm_r_dy: int,
+    ):
+        if outfit == "cloak":
+            # Capa larga acampanada con cuello blanco (exacta a fila 1 col 2)
+            stamp(7, 19, [
+                "..OOOOOOOOOO..",
+                ".OOWWOOOOWWOO.",
+                ".OOTTTTTTTtOO.",
+                ".OTTTTTTTTtOO.",
+                "OOTTTTTTTTtOO.",
+                "OOTTTTtTTTtOO.",
+                "OOTTTTtTTTtOO.",
+                "OOTTTTtTTTtOOO",
+                "OOttttttttttOO",
+                "OOOOOOOOOOOOOO",
+            ])
+            return
+
+        # 1. Torso compacto (x: 10..17, y: 19..25)
+        if direction == "down":
+            if outfit == "suit_tie":
+                torso = [
+                    "OOOOOOOO",
+                    "OTWAAWTO",
+                    "OTWAAWTO",
+                    "OTTWWtTO",
+                    "OTTTTTtO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "vest_shirt":
+                torso = [
+                    "OOOOOOOO",
+                    "OTWKKWTO",
+                    "OTTWWtTO",
+                    "OTTWWtTO",
+                    "OTTOOTtO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "overalls":
+                torso = [
+                    "OOOOOOOO",
+                    "OTBTTBTO",
+                    "OTBBBBTO",
+                    "OTBBBBbO",
+                    "OTBBBBbO",
+                    "OOOOOOOO",
+                ]
+            elif outfit == "tank_top":
+                torso = [
+                    "OOOOOOOO",
+                    "OKTTTTKO",
+                    "OTTTTTTO",
+                    "OTTTTTtO",
+                    "OTTtttTO",
+                    "OOOOOOOO",
+                ]
+            else:
+                torso = [
+                    "OOOOOOOO",
+                    "OTTKKTTO",
+                    "OTTTTTTO",
+                    "OTTTTTtO",
+                    "OTTtttTO",
+                    "OOOOOOOO",
+                ]
+        else:
+            torso = [
+                "OOOOOOOO",
+                "OTTTTTTO",
+                "OTTTTTTO",
+                "OTTTTTtO",
+                "OTTtttTO",
+                "OOOOOOOO",
+            ]
+        stamp(10, 19, torso)
+
+        # 2. Brazos pegados al torso (x: 8..9 izquierda, x: 18..19 derecha)
+        bare_arm = outfit == "tank_top"
+        short_sleeve = outfit in ("tshirt_jeans", "dress_skirt", "overalls", "vest_shirt")
+        if bare_arm:
+            arm_l = ["OO", "KO", "KO", "KO", "kO", "OO"]
+            arm_r = ["OO", "OK", "OK", "OK", "Ok", "OO"]
+        elif short_sleeve:
+            c_top = "W" if outfit == "vest_shirt" else "T"
+            arm_l = ["OO", f"{c_top}O", f"{c_top}O", "KO", "kO", "OO"]
+            arm_r = ["OO", f"O{c_top}", f"O{c_top}", "OK", "Ok", "OO"]
+        else:
+            arm_l = ["OO", "TO", "TO", "tO", "KO", "OO"]
+            arm_r = ["OO", "OT", "OT", "Ot", "OK", "OO"]
+
+        if direction in ("down", "up"):
+            stamp(8, 20 + arm_l_dy, arm_l)
+            stamp(18, 20 + arm_r_dy, arm_r)
+        else:
+            ax = 12 + (1 if walk_frame == 1 else (-1 if walk_frame == 3 else 0))
+            stamp(ax, 20, ["OOOO", "OTTO", "OTtO", "OKkO", "OOOO"])
+
+        # 3. Piernas JUNTAS con costura central oscura (x: 10..17, y: 25..30, idénticas a ref_sprites.png)
+        shoe_c = "W" if shoe_style == "sneakers" else "Z"
+        if outfit == "dress_skirt":
+            # Falda + piernas juntas con zapatos
+            stamp(10, 24, [
+                "OOOOOOOO",
+                "OBBBBBbO",
+                "OBBBBBbO",
+                "OOOOOOOO",
+            ])
+            l_row = "OKkO" if leg_l_dy == 0 else "OZZO"
+            r_row = "OKkO" if leg_r_dy == 0 else "OZZO"
+            stamp(10, 27, [
+                f"{l_row}{r_row}",
+                f"OZZOOZZO",
+                f"O{shoe_c}zOO{shoe_c}zO",
+                "OOOOOOOO",
+            ])
+        else:
+            l_leg = "OBbO" if leg_l_dy == 0 else "OZZO"
+            r_leg = "OBbO" if leg_r_dy == 0 else "OZZO"
+            stamp(10, 25, [
+                "OBbOOBbO",
+                f"{l_leg}{r_leg}",
+                "OZZOOZZO",
+                f"O{shoe_c}zOO{shoe_c}zO",
+                "OOOOOOOO",
+            ])
+
+    def _draw_accessory(self, stamp, acc: str, direction: str):
+        if acc == "none":
+            return
+
+        if acc == "fedora":
+            stamp(4, 3, [
+                ".....OOOOOOOOOO.....",
+                "....OODDDDDDDDOO....",
+                "...OODDDDDDDDDDOO...",
+                "...OOAAAAAAAAAAOO...",
+                "OOOOOOOOOOOOOOOOOOOO",
+            ])
+        elif acc == "witch_hat":
+            stamp(4, 1, [
+                "........OOOOO.......",
+                ".......OODDDDOO.....",
+                "......OODDDDDDOO....",
+                ".....OODDDDDDDDO....",
+                "....OODDDDDDDDOO....",
+                "...OOAAAYYYAAAAOO...",
+                "OOOOOOOOOOOOOOOOOOOO",
+            ])
+        elif acc == "top_hat":
+            stamp(5, 1, [
+                "...OOOOOOOOOOOO...",
+                "...OONNNNNNNNOO...",
+                "...OONNNNNNNNOO...",
+                "...OONNNNNNNNOO...",
+                "...OOAAAAAAAAOO...",
+                "OOOOOOOOOOOOOOOOOO",
+            ])
+        elif acc == "straw_hat":
+            stamp(4, 3, [
+                ".....OOOOOOOOOO.....",
+                "....OOFFFFFFFFOO....",
+                "...OOFFFFFFFFFFOO...",
+                "...OOAAAAAAAAAAOO...",
+                "OOOOOOOOOOOOOOOOOOOO",
+                ".OOffffffffffffffOO.",
+            ])
+        elif acc == "viking_helmet":
+            stamp(3, 2, [
+                ".OO................OO.",
+                "OWWO...OOOOOOOO...OWWO",
+                "OWWOO.OOMMMMMMOO.OOWWO",
+                ".OOWWOOMMMMMMMMOOWWOO.",
+                "..OOOOOMMMMMMMMOOOOO..",
+                ".....OOmmmmmmmmOO.....",
+                ".....OOOOOOOOOOOO.....",
+            ])
+        elif acc == "nurse_cap":
+            stamp(7, 3, [
+                "..OOOOOOOOOO..",
+                ".OOWWWWWWWWOO.",
+                "OOWWWWAAWWWWOO",
+                "OOWWWAAAAWWWOO",
+                "OOWWWWAAWWWWOO",
+                ".OOOOOOOOOOOO.",
+            ])
+        elif acc == "aviator_goggles":
+            stamp(6, 4, [
+                "..OOOOOOOOOOOO..",
+                ".OOFFFFFFFFFFOO.",
+                "OOFFFFFFFFFFFFOO",
+                "OOffffffffffffOO",
+            ])
+            if direction != "up":
+                stamp(8, 11, [
+                    "OOOOOOOOOOOO",
+                    "OGgGGOOGgGGO",
+                    "OGGGGOOGGGGO",
+                    "OOOOOOOOOOOO",
+                ])
+        elif acc == "glasses" and direction != "up":
+            if direction == "down":
+                stamp(8, 12, [
+                    "OOOOO..OOOOO",
+                    "OGgGOOOOGgGO",
+                    "OGGGO..OGGGO",
+                    "OOOOO..OOOOO",
+                ])
+            else:
+                stamp(7, 12, [
+                    "OOOO.OOOO",
+                    "OGgGOOGgGO",
+                    "OGGGOOGGGO",
+                    "OOOO.OOOO",
+                ])
+        elif acc == "headphones":
+            if direction in ("down", "up"):
+                stamp(5, 5, [
+                    "....OOOOOOOOOO....",
+                    "..OOAAAAAAAAAAOO..",
+                    ".OO............OO.",
+                    ".OO............OO.",
+                    "OOAO..........OAOO",
+                    "OAAO..........OAAO",
+                    "OAAO..........OAAO",
+                    "OOOO..........OOOO",
+                ])
+            else:
+                stamp(12, 5, [
+                    ".OOOO.",
+                    "OAAAO.",
+                    ".OAAO.",
+                    ".OAAO.",
+                    "OAAAAO",
+                    "OAeeAO",
+                    "OAAAAO",
+                    ".OOOO.",
+                ])
+
+
 SPRITE_ENGINE = ChibiSpriteRenderer()

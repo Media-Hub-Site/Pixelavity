@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Pixelavity - Motor de Personalización de Personajes, Background (Oficina) y Control de Demanda
+Pixelavity - Motor de Personalización por Cuadrículas (Tile-Grid 32x19) y Pool de Personajes
 Gestiona:
-  1. Pool de Personajes Personalizables (3 por defecto + creados por el usuario)
-  2. Asignación aleatoria sin repetición (solo repite cuando hay más agentes activos que personajes creados)
-  3. Personalización completa del Background (materiales de piso, colores de pared, dispositivos y decoraciones)
-  4. Reglas de validación de dispositivos mínimos (mín. 1 Computador, 1 Estantería de Libros, etc.)
-  5. Asignación inteligente de dispositivos bajo demanda (Pair-Programming / Revisión colaborativa cuando
-     hay más agentes que computadores o muebles disponibles).
+  1. Pool de Personajes Personalizables (12 estilos de pelo esculpidos, caras, ropa, zapatos, accesorios)
+  2. Asignación aleatoria sin repetición (solo repite si hay más agentes activos que personajes creados)
+  3. Mapa de Oficina basado 100% en Cuadrículas (32 columnas x 19 filas de 32x32 px = 1024x608):
+     - Piso por cuadrícula (floor_grid[row][col]) con dos modos de pintado:
+         * Modo 1x1 (Uno por uno)
+         * Modo Rellenar (Flood-Fill BFS limitado por paredes o pisos distintos)
+     - Paredes por cuadrícula (wall_grid[row][col]) con 5 estilos de muro
+     - Objetos (Dispositivos, Muebles, Decoración) posicionados estrictamente en celdas (col, row)
+       con tamaño en celdas (tile_w x tile_h) y prevención de solapamiento.
+  4. Reglas mínimas de dispositivos interactivos (mín. 1 Computador, 1 Mueble de Libros, etc.)
+  5. Control de demanda y Pair-Programming / Colaboración por celdas adyacentes.
 """
 
 import os
@@ -16,50 +21,61 @@ import uuid
 import copy
 import random
 import threading
-from typing import Dict, List, Optional, Any, Tuple
+from collections import deque
+from typing import Dict, List, Optional, Any, Tuple, Set
+
+
+GRID_COLS = 32
+GRID_ROWS = 19
+TILE_SIZE = 32
+WORLD_W = GRID_COLS * TILE_SIZE  # 1024
+WORLD_H = GRID_ROWS * TILE_SIZE  # 608
 
 
 # =============================================================================
-# CATÁLOGOS DE OPCIONES DE PERSONALIZACIÓN DE PERSONAJES
+# CATÁLOGOS DE PERSONALIZACIÓN DE PERSONAJES (12 PEINADOS DETALLADOS)
 # =============================================================================
 SKIN_TONES = [
-    {"id": "peach",   "name": "Durazno Claro", "color": "#ffcca8", "shadow": "#e0a57e"},
-    {"id": "light",   "name": "Marfil Cálido", "color": "#ffe0c8", "shadow": "#e5b898"},
-    {"id": "warm",    "name": "Trigueño",      "color": "#f1b280", "shadow": "#c98a5b"},
-    {"id": "tan",     "name": "Bronceado",     "color": "#d9915b", "shadow": "#b36f3c"},
-    {"id": "brown",   "name": "Moreno",        "color": "#a8653a", "shadow": "#824924"},
-    {"id": "deep",    "name": "Ébano",         "color": "#6e3f23", "shadow": "#4d2914"},
+    {"id": "peach", "name": "Durazno Claro", "color": "#ffcca8"},
+    {"id": "light", "name": "Marfil Cálido", "color": "#ffe0c8"},
+    {"id": "warm",  "name": "Trigueño",      "color": "#f1b280"},
+    {"id": "tan",   "name": "Bronceado",     "color": "#d9915b"},
+    {"id": "brown", "name": "Moreno",        "color": "#a8653a"},
+    {"id": "deep",  "name": "Ébano",         "color": "#6e3f23"},
 ]
 
 FACE_STYLES = [
     {"id": "smile",   "name": "Sonrisa Clásica"},
-    {"id": "happy",   "name": "Alegre"},
+    {"id": "happy",   "name": "Alegre con Rubor"},
     {"id": "focused", "name": "Concentrado"},
     {"id": "cool",    "name": "Guiño / Cool"},
 ]
 
 HAIR_STYLES = [
-    {"id": "short_parted",  "name": "Corto Clásico"},
-    {"id": "ponytail",      "name": "Coleta con Moño"},
-    {"id": "long_straight", "name": "Largo Liso"},
-    {"id": "wavy_bob",      "name": "Melena Ondulada"},
-    {"id": "pigtails",      "name": "Dos Coletas"},
-    {"id": "top_bun",       "name": "Moño Alto"},
+    {"id": "short_parted",  "name": "Corto Raya Diagonal"},
+    {"id": "ponytail",      "name": "Coleta Alta con Moño"},
+    {"id": "long_straight", "name": "Melena Larga Lateral"},
+    {"id": "wavy_bob",      "name": "Melena Ondulada Curva"},
+    {"id": "pigtails",      "name": "Dos Coletas Altas"},
+    {"id": "top_bun",       "name": "Moño Alto Esquinado"},
+    {"id": "low_ponytail",  "name": "Coleta Baja Ejecutiva"},
+    {"id": "spiky_messy",   "name": "Mechones en Punta"},
+    {"id": "curly_afro",    "name": "Rizado con Volumen"},
     {"id": "flat_top",      "name": "Corte Alto (Flat-Top)"},
-    {"id": "receding",      "name": "Corto Despejado"},
+    {"id": "receding",      "name": "Ejecutivo en M"},
     {"id": "bald",          "name": "Sin Pelo"},
 ]
 
 HAIR_COLORS = [
-    {"id": "gold",     "name": "Rubio Dorado",    "color": "#eab308"},
-    {"id": "auburn",   "name": "Castaño Rojizo",  "color": "#c2593f"},
-    {"id": "navy",     "name": "Azul Noche",      "color": "#2b3a55"},
-    {"id": "espresso", "name": "Castaño Oscuro",  "color": "#432818"},
-    {"id": "black",    "name": "Negro Carbón",    "color": "#1e2229"},
-    {"id": "ginger",   "name": "Pelirrojo",       "color": "#e05a2b"},
-    {"id": "silver",   "name": "Plata / Blanco",  "color": "#cbd5e1"},
-    {"id": "violet",   "name": "Violeta Cyber",   "color": "#9333ea"},
-    {"id": "mint",     "name": "Menta Neon",      "color": "#10b981"},
+    {"id": "gold",     "name": "Rubio Dorado",   "color": "#eab308"},
+    {"id": "auburn",   "name": "Castaño Rojizo", "color": "#c2593f"},
+    {"id": "navy",     "name": "Azul Noche",     "color": "#2b3a55"},
+    {"id": "espresso", "name": "Castaño Oscuro", "color": "#432818"},
+    {"id": "black",    "name": "Negro Carbón",   "color": "#1e2229"},
+    {"id": "ginger",   "name": "Pelirrojo Vivo", "color": "#e05a2b"},
+    {"id": "silver",   "name": "Plata / Blanco", "color": "#cbd5e1"},
+    {"id": "violet",   "name": "Violeta Cyber",  "color": "#9333ea"},
+    {"id": "mint",     "name": "Menta Neon",     "color": "#10b981"},
 ]
 
 OUTFIT_STYLES = [
@@ -75,7 +91,7 @@ OUTFIT_STYLES = [
 
 SHOE_STYLES = [
     {"id": "classic",  "name": "Zapatos Clásicos"},
-    {"id": "sneakers", "name": "Zapatillas Deportivas"},
+    {"id": "sneakers", "name": "Zapatillas con Suela Blanca"},
     {"id": "boots",    "name": "Botas"},
 ]
 
@@ -92,10 +108,6 @@ ACCESSORY_STYLES = [
     {"id": "straw_hat",       "name": "Sombrero de Paja"},
 ]
 
-
-# =============================================================================
-# 3 PERSONAJES POR DEFECTO (INSPIRADOS EN LA IMAGEN DE REFERENCIA)
-# =============================================================================
 DEFAULT_CHARACTERS: List[Dict[str, Any]] = [
     {
         "id": "char-default-alex",
@@ -146,179 +158,403 @@ DEFAULT_CHARACTERS: List[Dict[str, Any]] = [
 
 
 # =============================================================================
-# MATERIALES DE PISO, DISPOSITIVOS Y DECORACIÓN DEL BACKGROUND
+# MATERIALES DE PISO Y PARED POR CUADRÍCULA (32x32)
 # =============================================================================
 FLOOR_MATERIALS: Dict[str, Dict[str, str]] = {
-    "oak_wood":      {"name": "Madera Roble",       "colorA": "#3d291e", "colorB": "#332219", "pattern": "planks"},
-    "walnut_wood":   {"name": "Madera Nogal",       "colorA": "#271d18", "colorB": "#211814", "pattern": "planks"},
-    "navy_carpet":   {"name": "Alfombra Azul",      "colorA": "#141f2e", "colorB": "#111a27", "pattern": "grid"},
-    "emerald_tile":  {"name": "Baldosa Esmeralda",  "colorA": "#12211c", "colorB": "#0f1c18", "pattern": "tiles"},
-    "metal_grate":   {"name": "Metal Industrial",   "colorA": "#1d222b", "colorB": "#171b22", "pattern": "grate"},
-    "cyber_grid":    {"name": "Cyber Grid Cyan",    "colorA": "#10212b", "colorB": "#0c1a22", "pattern": "grid"},
-    "amber_tech":    {"name": "Hex Tech Ámbar",     "colorA": "#221b12", "colorB": "#1c160e", "pattern": "tiles"},
-    "studio_purple": {"name": "Estudio Violeta",    "colorA": "#21152c", "colorB": "#1b1124", "pattern": "checkers"},
-    "cafe_warm":     {"name": "Cerámica Cafetería", "colorA": "#281a20", "colorB": "#21151a", "pattern": "checkers"},
-    "marble_slate":  {"name": "Mármol Pizarra",     "colorA": "#27303f", "colorB": "#222a38", "pattern": "tiles"},
+    "oak_wood":      {"name": "Madera Roble",       "colorA": "#4a3222", "colorB": "#3d281b", "pattern": "planks"},
+    "walnut_wood":   {"name": "Madera Nogal",       "colorA": "#2d201a", "colorB": "#241914", "pattern": "planks"},
+    "parquet_gold":  {"name": "Parquet Dorado",     "colorA": "#5c3d24", "colorB": "#4d321c", "pattern": "checkers"},
+    "navy_carpet":   {"name": "Alfombra Azul",      "colorA": "#162436", "colorB": "#131e2e", "pattern": "grid"},
+    "emerald_tile":  {"name": "Baldosa Esmeralda",  "colorA": "#132620", "colorB": "#0f1e1a", "pattern": "tiles"},
+    "metal_grate":   {"name": "Metal Industrial",   "colorA": "#1e242e", "colorB": "#171c24", "pattern": "grate"},
+    "cyber_grid":    {"name": "Cyber Grid Cyan",    "colorA": "#112430", "colorB": "#0d1c26", "pattern": "grid"},
+    "amber_tech":    {"name": "Hex Tech Ámbar",     "colorA": "#261e13", "colorB": "#1f180f", "pattern": "tiles"},
+    "studio_purple": {"name": "Estudio Violeta",    "colorA": "#241730", "colorB": "#1d1226", "pattern": "checkers"},
+    "cafe_warm":     {"name": "Cerámica Cafetería", "colorA": "#2e1d24", "colorB": "#25171d", "pattern": "checkers"},
+    "marble_slate":  {"name": "Pasillo Pizarra",    "colorA": "#1a2232", "colorB": "#161d2b", "pattern": "tiles"},
+    "marble_white":  {"name": "Mármol Claro",       "colorA": "#475569", "colorB": "#3b4759", "pattern": "tiles"},
 }
 
-# Catálogo de dispositivos interactivos y reglas de cantidad mínima obligatoria
-DEVICE_CATALOG: Dict[str, Dict[str, Any]] = {
+WALL_MATERIALS: Dict[str, Dict[str, str]] = {
+    "dark_tech":  {"name": "Muro Tech Oscuro",   "top": "#334155", "front": "#1e293b", "border": "#475569"},
+    "brick_wall": {"name": "Pared de Ladrillo",  "top": "#7c2d12", "front": "#5c210d", "border": "#9a3412"},
+    "wood_panel": {"name": "Tabique de Madera",  "top": "#78350f", "front": "#451a03", "border": "#92400e"},
+    "glass_wall": {"name": "División Cristal",   "top": "#38bdf8", "front": "#0284c7", "border": "#7dd3fc"},
+    "cyber_neon": {"name": "Muro Cyber Neon",    "top": "#a855f7", "front": "#581c87", "border": "#d8b4fe"},
+}
+
+
+# =============================================================================
+# CATÁLOGO UNIFICADO POR CATEGORÍAS (TAMAÑOS EN CUADRÍCULAS tile_w x tile_h)
+# Categorías:
+#   - "devices":     Dispositivos tecnológicos e interactivos
+#   - "furniture":   Muebles de oficina, estanterías, sofás y mesas
+#   - "decorations": Plantas, alfombras, máquinas y accesorios
+# =============================================================================
+OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
+    # --- CATEGORÍA 1: DISPOSITIVOS ---
     "computer_desk": {
         "type": "computer_desk",
+        "category": "devices",
         "station": "coding_desk",
-        "name": "Computador (PC)",
+        "name": "Computador Dual (PC)",
         "icon": "💻",
-        "min_required": 1,
-        "w": 80,
-        "h": 44,
-        "seat_offset": (0, 24, "up"),
-        "collab_offsets": [(-28, 22, "right"), (28, 22, "left"), (0, 44, "up")],
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(1, 1, "left"), (-1, 1, "right"), (0, 2, "up")],
     },
-    "bookshelf": {
-        "type": "bookshelf",
-        "station": "library",
-        "name": "Mueble de Libros",
-        "icon": "📚",
-        "min_required": 1,
-        "w": 64,
-        "h": 50,
-        "seat_offset": (0, 38, "up"),
-        "collab_offsets": [(-26, 38, "right"), (26, 38, "left"), (0, 56, "up")],
+    "laptop_desk": {
+        "type": "laptop_desk",
+        "category": "devices",
+        "station": "coding_desk",
+        "name": "Laptop Compacta",
+        "icon": "💻",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(-1, 1, "right"), (1, 1, "left")],
     },
     "server_terminal": {
         "type": "server_terminal",
+        "category": "devices",
         "station": "server_lab",
         "name": "Servidor / Terminal",
         "icon": "⚡",
-        "min_required": 1,
-        "w": 68,
-        "h": 54,
-        "seat_offset": (0, 40, "up"),
-        "collab_offsets": [(-26, 40, "right"), (26, 40, "left")],
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(1, 1, "left"), (-1, 1, "right")],
     },
     "whiteboard": {
         "type": "whiteboard",
+        "category": "devices",
         "station": "strategy_board",
         "name": "Pizarra Estrategia",
         "icon": "💭",
-        "min_required": 1,
-        "w": 110,
-        "h": 46,
-        "seat_offset": (0, 38, "up"),
-        "collab_offsets": [(-30, 38, "right"), (30, 38, "left")],
+        "tile_w": 3,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (1, 1, "up"),
+        "collab_cells": [(0, 1, "right"), (2, 1, "left")],
     },
     "orchestrator_core": {
         "type": "orchestrator_core",
+        "category": "devices",
         "station": "orchestrator_hub",
-        "name": "Consola Orchestrator",
+        "name": "Núcleo Orchestrator",
         "icon": "🎛️",
-        "min_required": 1,
-        "w": 78,
-        "h": 48,
-        "seat_offset": (0, 36, "up"),
-        "collab_offsets": [(-28, 36, "right"), (28, 36, "left")],
+        "tile_w": 2,
+        "tile_h": 2,
+        "blocking": True,
+        "seat_cell": (0, 2, "up"),
+        "collab_cells": [(1, 2, "left"), (-1, 2, "right")],
     },
     "web_radar": {
         "type": "web_radar",
+        "category": "devices",
         "station": "web_station",
         "name": "Cabina Web / Radar",
         "icon": "🌐",
-        "min_required": 1,
-        "w": 68,
-        "h": 44,
-        "seat_offset": (0, 34, "up"),
-        "collab_offsets": [(-26, 34, "right"), (26, 34, "left")],
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(1, 1, "left"), (-1, 1, "right")],
     },
     "art_easel": {
         "type": "art_easel",
+        "category": "devices",
         "station": "art_studio",
         "name": "Mesa Estudio UI",
         "icon": "🎨",
-        "min_required": 1,
-        "w": 60,
-        "h": 44,
-        "seat_offset": (0, 34, "up"),
-        "collab_offsets": [(-24, 34, "right"), (24, 34, "left")],
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(1, 1, "left"), (-1, 1, "right")],
+    },
+
+    # --- CATEGORÍA 2: MUEBLES ---
+    "bookshelf": {
+        "type": "bookshelf",
+        "category": "furniture",
+        "station": "library",
+        "name": "Estantería de Libros",
+        "icon": "📚",
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(1, 1, "left"), (-1, 1, "right")],
+    },
+    "bookshelf_single": {
+        "type": "bookshelf_single",
+        "category": "furniture",
+        "station": "library",
+        "name": "Librero Compacto",
+        "icon": "📖",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(-1, 1, "right"), (1, 1, "left")],
     },
     "coffee_sofa": {
         "type": "coffee_sofa",
+        "category": "furniture",
         "station": "lounge",
-        "name": "Sofá / Barra Café",
+        "name": "Sofá Lounge Rojo",
+        "icon": "🛋️",
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(1, 1, "left"), (-1, 1, "right")],
+    },
+    "coffee_bar": {
+        "type": "coffee_bar",
+        "category": "furniture",
+        "station": "lounge",
+        "name": "Barra Cafetería",
         "icon": "☕",
-        "min_required": 1,
-        "w": 88,
-        "h": 40,
-        "seat_offset": (0, 26, "up"),
-        "collab_offsets": [(-28, 26, "right"), (28, 26, "left"), (-16, 44, "up"), (16, 44, "up")],
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+        "seat_cell": (0, 1, "up"),
+        "collab_cells": [(1, 1, "left"), (-1, 1, "right")],
+    },
+    "reading_table": {
+        "type": "reading_table",
+        "category": "furniture",
+        "station": None,
+        "name": "Mesa de Lectura",
+        "icon": "🪑",
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "meeting_table": {
+        "type": "meeting_table",
+        "category": "furniture",
+        "station": None,
+        "name": "Mesa de Reuniones",
+        "icon": "📋",
+        "tile_w": 3,
+        "tile_h": 2,
+        "blocking": True,
+    },
+    "filing_cabinet": {
+        "type": "filing_cabinet",
+        "category": "furniture",
+        "station": None,
+        "name": "Archivador Metálico",
+        "icon": "🗄️",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+    },
+
+    # --- CATEGORÍA 3: DECORACIÓN ---
+    "plant_monstera": {
+        "type": "plant_monstera",
+        "category": "decorations",
+        "station": None,
+        "name": "Planta Monstera",
+        "icon": "🪴",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "plant_cactus": {
+        "type": "plant_cactus",
+        "category": "decorations",
+        "station": None,
+        "name": "Cactus Pixel",
+        "icon": "🌵",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "arcade_machine": {
+        "type": "arcade_machine",
+        "category": "decorations",
+        "station": None,
+        "name": "Máquina Arcade",
+        "icon": "🕹️",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "water_cooler": {
+        "type": "water_cooler",
+        "category": "decorations",
+        "station": None,
+        "name": "Dispensador Agua",
+        "icon": "🚰",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "rug_persian": {
+        "type": "rug_persian",
+        "category": "decorations",
+        "station": None,
+        "name": "Alfombra Persa",
+        "icon": "🟥",
+        "tile_w": 3,
+        "tile_h": 2,
+        "blocking": False,  # Las alfombras se pueden pisar
+    },
+    "rug_cyber": {
+        "type": "rug_cyber",
+        "category": "decorations",
+        "station": None,
+        "name": "Alfombra Cyber",
+        "icon": "💠",
+        "tile_w": 3,
+        "tile_h": 2,
+        "blocking": False,
+    },
+    "floor_lamp": {
+        "type": "floor_lamp",
+        "category": "decorations",
+        "station": None,
+        "name": "Lámpara de Pie",
+        "icon": "💡",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "trophy": {
+        "type": "trophy",
+        "category": "decorations",
+        "station": None,
+        "name": "Trofeo MediaHub",
+        "icon": "🏆",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
     },
 }
 
-DECORATION_CATALOG: Dict[str, Dict[str, Any]] = {
-    "plant_monstera": {"type": "plant_monstera", "name": "Planta Monstera",   "icon": "🪴", "w": 26, "h": 32},
-    "plant_cactus":   {"type": "plant_cactus",   "name": "Cactus Pixel",      "icon": "🌵", "w": 22, "h": 28},
-    "arcade_machine": {"type": "arcade_machine", "name": "Máquina Arcade",    "icon": "🕹️", "w": 34, "h": 48},
-    "water_cooler":   {"type": "water_cooler",   "name": "Dispensador Agua",  "icon": "🚰", "w": 24, "h": 38},
-    "coffee_bar":     {"type": "coffee_bar",     "name": "Cafetera Espresso", "icon": "☕", "w": 46, "h": 32},
-    "rug_persian":    {"type": "rug_persian",    "name": "Alfombra Roja",     "icon": "🛋️", "w": 84, "h": 48},
-    "rug_cyber":      {"type": "rug_cyber",      "name": "Alfombra Cyber",    "icon": "💠", "w": 84, "h": 48},
-    "floor_lamp":     {"type": "floor_lamp",     "name": "Lámpara de Pie",    "icon": "💡", "w": 20, "h": 40},
-    "trophy":         {"type": "trophy",         "name": "Trofeo MediaHub",   "icon": "🏆", "w": 24, "h": 30},
+# Reglas mínimas por estación de actividad para que los agentes siempre tengan dónde interactuar
+REQUIRED_STATIONS: Dict[str, str] = {
+    "coding_desk":      "💻 Computador (PC o Laptop)",
+    "library":          "📚 Mueble de Libros / Estantería",
+    "server_lab":       "⚡ Servidor / Terminal",
+    "strategy_board":   "💭 Pizarra Estrategia",
+    "orchestrator_hub": "🎛️ Núcleo Orchestrator",
+    "web_station":      "🌐 Cabina Web / Radar",
+    "art_studio":       "🎨 Mesa Estudio UI",
+    "lounge":           "☕ Sofá o Barra de Cafetería",
 }
 
 
 def build_default_office_layout() -> Dict[str, Any]:
-    """Construye el diseño de oficina por defecto con habitaciones, pisos, dispositivos y decoración."""
+    """
+    Construye el mapa por defecto en una cuadrícula exacta de 32x19 celdas (32x32 px cada una).
+    Incluye 8 salas con sus pisos, muros divisorios con puertas abiertas al corredor central (filas 8..9),
+    dispositivos interactivos, muebles y decoración.
+    """
+    floor_grid = [["marble_slate" for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
+    wall_grid: List[List[Optional[str]]] = [[None for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
+
+    #Definir zonas superiores (filas 0..7) e inferiores (filas 10..18)
+    top_zones = [
+        (0, 7,   "walnut_wood",   3),  # Biblioteca (cols 0..7, puerta en col 3..4)
+        (8, 15,  "navy_carpet",   11), # Estrategia (cols 8..15, puerta en col 11..12)
+        (16, 23, "amber_tech",    19), # Orchestrator (cols 16..23, puerta en col 19..20)
+        (24, 31, "cyber_grid",    27), # Cabina Web (cols 24..31, puerta en col 27..28)
+    ]
+    bot_zones = [
+        (0, 10,  "emerald_tile",  5),  # Computadores (cols 0..10, puerta en col 5..6)
+        (11, 17, "metal_grate",   14), # Terminal Lab (cols 11..17, puerta en col 14..15)
+        (18, 22, "studio_purple", 20), # Estudio UI (cols 18..22, puerta en col 20)
+        (23, 31, "cafe_warm",     27), # Cafetería (cols 23..31, puerta en col 27..28)
+    ]
+
+    for c0, c1, mat, door_c in top_zones:
+        for r in range(0, 8):
+            for c in range(c0, c1 + 1):
+                floor_grid[r][c] = mat
+        # Muro horizontal en fila 7 (con abertura de puerta de 2 celdas)
+        for c in range(c0, c1 + 1):
+            if c not in (door_c, door_c + 1):
+                wall_grid[7][c] = "dark_tech"
+        # Muro vertical derecho entre salas
+        if c1 < GRID_COLS - 1:
+            for r in range(0, 8):
+                wall_grid[r][c1] = "dark_tech"
+
+    for c0, c1, mat, door_c in bot_zones:
+        for r in range(10, GRID_ROWS):
+            for c in range(c0, c1 + 1):
+                floor_grid[r][c] = mat
+        # Muro horizontal en fila 10 (con abertura de puerta)
+        for c in range(c0, c1 + 1):
+            if c not in (door_c, door_c + 1):
+                wall_grid[10][c] = "dark_tech"
+        if c1 < GRID_COLS - 1:
+            for r in range(10, GRID_ROWS):
+                wall_grid[r][c1] = "dark_tech"
+
+    items = [
+        # Biblioteca (cols 0..6, rows 1..6)
+        {"id": "obj-lib-1", "type": "bookshelf",       "col": 1,  "row": 1},
+        {"id": "obj-lib-2", "type": "bookshelf",       "col": 4,  "row": 1},
+        {"id": "obj-lib-3", "type": "reading_table",   "col": 2,  "row": 4},
+        {"id": "obj-lib-4", "type": "plant_monstera",  "col": 0,  "row": 6},
+
+        # Estrategia (cols 8..14, rows 1..6)
+        {"id": "obj-str-1", "type": "whiteboard",      "col": 10, "row": 1},
+        {"id": "obj-str-2", "type": "rug_cyber",       "col": 10, "row": 4},
+
+        # Orchestrator (cols 16..22, rows 1..6)
+        {"id": "obj-orc-1", "type": "orchestrator_core", "col": 18, "row": 2},
+        {"id": "obj-orc-2", "type": "floor_lamp",        "col": 16, "row": 1},
+
+        # Cabina Web (cols 24..30, rows 1..6)
+        {"id": "obj-web-1", "type": "web_radar",       "col": 25, "row": 1},
+        {"id": "obj-web-2", "type": "web_radar",       "col": 28, "row": 1},
+
+        # Sala de Computadores (cols 0..9, rows 11..17)
+        {"id": "obj-pc-1",  "type": "computer_desk",   "col": 1,  "row": 12},
+        {"id": "obj-pc-2",  "type": "computer_desk",   "col": 6,  "row": 12},
+        {"id": "obj-pc-3",  "type": "computer_desk",   "col": 1,  "row": 15},
+        {"id": "obj-pc-4",  "type": "computer_desk",   "col": 6,  "row": 15},
+        {"id": "obj-pc-5",  "type": "plant_cactus",    "col": 9,  "row": 11},
+
+        # Terminal Lab (cols 11..16, rows 11..17)
+        {"id": "obj-srv-1", "type": "server_terminal", "col": 12, "row": 12},
+        {"id": "obj-srv-2", "type": "server_terminal", "col": 14, "row": 15},
+
+        # Estudio UI (cols 18..21, rows 11..17)
+        {"id": "obj-art-1", "type": "art_easel",       "col": 19, "row": 13},
+        {"id": "obj-art-2", "type": "trophy",          "col": 18, "row": 11},
+
+        # Cafetería & Lounge (cols 23..31, rows 11..17)
+        {"id": "obj-lng-1", "type": "coffee_bar",      "col": 24, "row": 11},
+        {"id": "obj-lng-2", "type": "water_cooler",    "col": 29, "row": 11},
+        {"id": "obj-lng-3", "type": "arcade_machine",  "col": 30, "row": 11},
+        {"id": "obj-lng-4", "type": "coffee_sofa",     "col": 24, "row": 15},
+        {"id": "obj-lng-5", "type": "coffee_sofa",     "col": 28, "row": 15},
+        {"id": "obj-lng-6", "type": "rug_persian",     "col": 25, "row": 13},
+    ]
+
     return {
-        "hallway_floor": "marble_slate",
-        "show_room_walls": True,
-        "room_floors": {
-            "library": "walnut_wood",
-            "strategy_board": "navy_carpet",
-            "orchestrator_hub": "amber_tech",
-            "web_station": "cyber_grid",
-            "coding_desk": "emerald_tile",
-            "server_lab": "metal_grate",
-            "art_studio": "studio_purple",
-            "lounge": "cafe_warm",
-        },
-        "devices": [
-            # Biblioteca (2 muebles de libros por defecto)
-            {"id": "dev-lib-1", "type": "bookshelf", "x": 86,  "y": 82},
-            {"id": "dev-lib-2", "type": "bookshelf", "x": 188, "y": 82},
-            # Estrategia (1 gran pizarra)
-            {"id": "dev-str-1", "type": "whiteboard", "x": 394, "y": 82},
-            # Orchestrator (1 consola central)
-            {"id": "dev-orc-1", "type": "orchestrator_core", "x": 616, "y": 96},
-            # Cabina Web (2 estaciones radar)
-            {"id": "dev-web-1", "type": "web_radar", "x": 852, "y": 86},
-            {"id": "dev-web-2", "type": "web_radar", "x": 948, "y": 86},
-            # Sala de Computadores (4 computadores por defecto; el usuario puede dejar 1, 2 o agregar más)
-            {"id": "dev-pc-1",  "type": "computer_desk", "x": 96,  "y": 392},
-            {"id": "dev-pc-2",  "type": "computer_desk", "x": 274, "y": 392},
-            {"id": "dev-pc-3",  "type": "computer_desk", "x": 96,  "y": 500},
-            {"id": "dev-pc-4",  "type": "computer_desk", "x": 274, "y": 500},
-            # Terminal Lab (2 racks de servidores/consola)
-            {"id": "dev-srv-1", "type": "server_terminal", "x": 442, "y": 405},
-            {"id": "dev-srv-2", "type": "server_terminal", "x": 534, "y": 405},
-            # Estudio UI (1 mesa creativa)
-            {"id": "dev-art-1", "type": "art_easel", "x": 686, "y": 415},
-            # Cafetería & Lounge (2 zonas de descanso/sofá)
-            {"id": "dev-lng-1", "type": "coffee_sofa", "x": 846, "y": 418},
-            {"id": "dev-lng-2", "type": "coffee_sofa", "x": 948, "y": 512},
-        ],
-        "decorations": [
-            {"id": "dec-1", "type": "plant_monstera", "x": 42,  "y": 232},
-            {"id": "dec-2", "type": "coffee_bar",     "x": 845, "y": 362},
-            {"id": "dec-3", "type": "water_cooler",   "x": 992, "y": 365},
-            {"id": "dec-4", "type": "arcade_machine", "x": 992, "y": 438},
-            {"id": "dec-5", "type": "plant_cactus",   "x": 342, "y": 364},
-            {"id": "dec-6", "type": "trophy",         "x": 736, "y": 364},
-        ],
+        "schema": "grid_v2",
+        "floor_grid": floor_grid,
+        "wall_grid": wall_grid,
+        "items": items,
     }
 
 
 # =============================================================================
-# GESTOR CENTRAL DE PERSONALIZACIÓN, POOL DE PERSONAJES Y CONTROL DE DEMANDA
+# GESTOR CENTRAL DE PERSONALIZACIÓN, CUADRÍCULA, PATHFINDING A* Y DEMANDA
 # =============================================================================
 class CustomizationManager:
     def __init__(self, storage_path: Optional[str] = None):
@@ -326,14 +562,12 @@ class CustomizationManager:
             appdata = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
             data_dir = os.path.join(appdata, "MediaHub", "Pixelavity")
             os.makedirs(data_dir, exist_ok=True)
-            storage_path = os.path.join(data_dir, "customization.json")
+            storage_path = os.path.join(data_dir, "customization_v2.json")
         self.storage_path = storage_path
         self.lock = threading.RLock()
 
         self.characters: List[Dict[str, Any]] = copy.deepcopy(DEFAULT_CHARACTERS)
         self.office: Dict[str, Any] = build_default_office_layout()
-
-        # Asignaciones activas: agent_id -> character_id
         self.agent_to_character: Dict[str, str] = {}
         self._load()
 
@@ -346,10 +580,9 @@ class CustomizationManager:
                 raw = json.load(f)
             if isinstance(raw.get("characters"), list) and len(raw["characters"]) > 0:
                 self.characters = raw["characters"]
-            if isinstance(raw.get("office"), dict):
-                default_off = build_default_office_layout()
-                default_off.update(raw["office"])
-                self.office = default_off
+            off = raw.get("office")
+            if isinstance(off, dict) and off.get("schema") == "grid_v2":
+                self.office = off
         except Exception as e:
             print(f"[CustomizationManager] Error cargando configuración: {e}")
 
@@ -358,10 +591,7 @@ class CustomizationManager:
             os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
             with open(self.storage_path, "w", encoding="utf-8") as f:
                 json.dump(
-                    {
-                        "characters": self.characters,
-                        "office": self.office,
-                    },
+                    {"characters": self.characters, "office": self.office},
                     f,
                     ensure_ascii=False,
                     indent=2,
@@ -370,7 +600,7 @@ class CustomizationManager:
             print(f"[CustomizationManager] Error guardando configuración: {e}")
 
     # -------------------------------------------------------------------------
-    # GESTIÓN DE PERSONAJES Y ASIGNACIÓN ALEATORIA SIN REPETICIÓN
+    # PERSONAJES Y ASIGNACIÓN SIN REPETICIÓN
     # -------------------------------------------------------------------------
     def get_characters(self) -> List[Dict[str, Any]]:
         with self.lock:
@@ -380,14 +610,12 @@ class CustomizationManager:
         with self.lock:
             cid = char_data.get("id") or f"char-{uuid.uuid4().hex[:8]}"
             char_data["id"] = cid
-            replaced = False
             for idx, existing in enumerate(self.characters):
                 if existing["id"] == cid:
                     self.characters[idx] = copy.deepcopy(char_data)
-                    replaced = True
-                    break
-            if not replaced:
-                self.characters.append(copy.deepcopy(char_data))
+                    self._save()
+                    return copy.deepcopy(char_data)
+            self.characters.append(copy.deepcopy(char_data))
             self._save()
             return copy.deepcopy(char_data)
 
@@ -396,7 +624,6 @@ class CustomizationManager:
             if len(self.characters) <= 1:
                 return False, "Debe existir al menos 1 personaje en tu colección."
             self.characters = [c for c in self.characters if c["id"] != char_id]
-            # Limpiar asignaciones de agentes que usaban este personaje para que tomen otro
             for aid, assigned_cid in list(self.agent_to_character.items()):
                 if assigned_cid == char_id:
                     del self.agent_to_character[aid]
@@ -410,33 +637,22 @@ class CustomizationManager:
             self._save()
 
     def assign_characters_to_agents(self, active_agent_ids: List[str]) -> Dict[str, Dict[str, Any]]:
-        """
-        Asigna personajes de forma aleatoria a los agentes activos SIN repetir personajes,
-        a menos que todos los personajes ya estén en uso y haya más agentes que personajes
-        (ej. 5 personajes y 6 agentes -> usa los 5 sin repetir + 1 repetido al azar).
-        """
         with self.lock:
             if not self.characters:
                 self.characters = copy.deepcopy(DEFAULT_CHARACTERS)
-
             char_by_id = {c["id"]: c for c in self.characters}
             active_set = set(active_agent_ids)
 
-            # 1. Liberar personajes de agentes que ya no están activos
             for old_aid in list(self.agent_to_character.keys()):
                 if old_aid not in active_set or self.agent_to_character[old_aid] not in char_by_id:
                     del self.agent_to_character[old_aid]
 
-            # 2. Contar cuántas veces está siendo usado cada personaje actualmente
             usage_count: Dict[str, int] = {c["id"]: 0 for c in self.characters}
             for aid in active_agent_ids:
                 cid = self.agent_to_character.get(aid)
                 if cid and cid in usage_count:
                     usage_count[cid] += 1
 
-            # 3. Para cada agente sin personaje asignado, elegir aleatoriamente entre los de menor uso
-            #    (Si hay personajes con uso == 0, elige exclusivamente entre los no usados.
-            #     Si todos tienen uso >= 1, elige entre los de uso == min_usage).
             for aid in active_agent_ids:
                 if aid not in self.agent_to_character:
                     min_use = min(usage_count.values())
@@ -452,149 +668,294 @@ class CustomizationManager:
             }
 
     # -------------------------------------------------------------------------
-    # GESTIÓN DEL BACKGROUND / OFICINA Y REGLAS MÍNIMAS DE DISPOSITIVOS
+    # OPERACIONES POR CUADRÍCULA: PISOS (1x1 Y RELLENAR), PAREDES Y OBJETOS
     # -------------------------------------------------------------------------
     def get_office_layout(self) -> Dict[str, Any]:
         with self.lock:
             return copy.deepcopy(self.office)
-
-    def validate_office_devices(self, devices: List[Dict[str, Any]]) -> Tuple[bool, str]:
-        """
-        Verifica las reglas mínimas de dispositivos interactivos:
-        Debe haber mínimo 1 Computador, mínimo 1 Mueble de Libros, mínimo 1 Terminal,
-        mínimo 1 Pizarra, mínimo 1 Consola Orchestrator, mínimo 1 Cabina Web,
-        mínimo 1 Mesa UI y mínimo 1 Zona de Descanso/Café.
-        """
-        counts: Dict[str, int] = {}
-        for d in devices:
-            dtype = d.get("type", "")
-            counts[dtype] = counts.get(dtype, 0) + 1
-
-        for dtype, spec in DEVICE_CATALOG.items():
-            min_req = spec.get("min_required", 1)
-            if counts.get(dtype, 0) < min_req:
-                return (
-                    False,
-                    f"⚠️ Regla de la oficina: Debe haber como mínimo {min_req} {spec['icon']} {spec['name']} "
-                    f"para que los agentes puedan interactuar.",
-                )
-        return True, "Diseño válido."
-
-    def update_office_layout(self, new_office: Dict[str, Any]) -> Tuple[bool, str]:
-        with self.lock:
-            devices = new_office.get("devices", self.office.get("devices", []))
-            ok, msg = self.validate_office_devices(devices)
-            if not ok:
-                return False, msg
-            self.office.update(copy.deepcopy(new_office))
-            self._save()
-            return True, "Oficina guardada correctamente."
-
-    def add_device(self, device_type: str, x: int, y: int) -> Tuple[bool, Dict[str, Any]]:
-        with self.lock:
-            if device_type not in DEVICE_CATALOG:
-                return False, {}
-            new_dev = {
-                "id": f"dev-{uuid.uuid4().hex[:7]}",
-                "type": device_type,
-                "x": int(x),
-                "y": int(y),
-            }
-            self.office.setdefault("devices", []).append(new_dev)
-            self._save()
-            return True, copy.deepcopy(new_dev)
-
-    def remove_device(self, device_id: str) -> Tuple[bool, str]:
-        with self.lock:
-            current_devs = self.office.get("devices", [])
-            remaining = [d for d in current_devs if d.get("id") != device_id]
-            ok, msg = self.validate_office_devices(remaining)
-            if not ok:
-                return False, msg
-            self.office["devices"] = remaining
-            self._save()
-            return True, "Dispositivo eliminado."
-
-    def move_item(self, item_id: str, x: int, y: int) -> bool:
-        with self.lock:
-            for d in self.office.get("devices", []):
-                if d.get("id") == item_id:
-                    d["x"] = int(max(36, min(1004, x)))
-                    d["y"] = int(max(44, min(585, y)))
-                    self._save()
-                    return True
-            for dec in self.office.get("decorations", []):
-                if dec.get("id") == item_id:
-                    dec["x"] = int(max(24, min(1016, x)))
-                    dec["y"] = int(max(30, min(595, y)))
-                    self._save()
-                    return True
-            return False
-
-    def add_decoration(self, dec_type: str, x: int, y: int) -> Tuple[bool, Dict[str, Any]]:
-        with self.lock:
-            if dec_type not in DECORATION_CATALOG:
-                return False, {}
-            new_dec = {
-                "id": f"dec-{uuid.uuid4().hex[:7]}",
-                "type": dec_type,
-                "x": int(x),
-                "y": int(y),
-            }
-            self.office.setdefault("decorations", []).append(new_dec)
-            self._save()
-            return True, copy.deepcopy(new_dec)
-
-    def remove_decoration(self, dec_id: str) -> bool:
-        with self.lock:
-            before = len(self.office.get("decorations", []))
-            self.office["decorations"] = [d for d in self.office.get("decorations", []) if d.get("id") != dec_id]
-            self._save()
-            return len(self.office["decorations"]) < before
-
-    def set_room_floor(self, room_id: str, material_id: str):
-        with self.lock:
-            if material_id not in FLOOR_MATERIALS:
-                return
-            if room_id == "hallway":
-                self.office["hallway_floor"] = material_id
-            else:
-                self.office.setdefault("room_floors", {})[room_id] = material_id
-            self._save()
-
-    def set_show_room_walls(self, show_walls: bool):
-        with self.lock:
-            self.office["show_room_walls"] = bool(show_walls)
-            self._save()
 
     def reset_office_to_default(self):
         with self.lock:
             self.office = build_default_office_layout()
             self._save()
 
+    def paint_floor_tile(self, col: int, row: int, material_id: str) -> bool:
+        """Modo 1x1 (Uno por uno): Pinta una sola cuadrícula de piso."""
+        with self.lock:
+            if not (0 <= col < GRID_COLS and 0 <= row < GRID_ROWS):
+                return False
+            if material_id not in FLOOR_MATERIALS:
+                return False
+            if self.office["floor_grid"][row][col] == material_id:
+                return False
+            self.office["floor_grid"][row][col] = material_id
+            self._save()
+            return True
+
+    def flood_fill_floor(self, start_col: int, start_row: int, new_material: str) -> int:
+        """
+        Modo Rellenar (Bote de pintura): Rellena todas las cuadrículas conectadas
+        que tengan el mismo material de piso, deteniéndose ante paredes o pisos diferentes.
+        """
+        with self.lock:
+            if not (0 <= start_col < GRID_COLS and 0 <= start_row < GRID_ROWS):
+                return 0
+            if new_material not in FLOOR_MATERIALS:
+                return 0
+
+            fgrid = self.office["floor_grid"]
+            wgrid = self.office["wall_grid"]
+            target_mat = fgrid[start_row][start_col]
+            if target_mat == new_material:
+                return 0
+
+            queue = deque([(start_col, start_row)])
+            visited = {(start_col, start_row)}
+            filled = 0
+
+            while queue:
+                c, r = queue.popleft()
+                fgrid[r][c] = new_material
+                filled += 1
+
+                for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nc, nr = c + dc, r + dr
+                    if 0 <= nc < GRID_COLS and 0 <= nr < GRID_ROWS and (nc, nr) not in visited:
+                        # Detener el relleno si hay una pared en la celda vecina o si el piso es distinto
+                        if wgrid[nr][nc] is not None:
+                            continue
+                        if fgrid[nr][nc] == target_mat:
+                            visited.add((nc, nr))
+                            queue.append((nc, nr))
+
+            if filled > 0:
+                self._save()
+            return filled
+
+    def set_wall_tile(self, col: int, row: int, wall_material: Optional[str]) -> bool:
+        """Coloca o borra (None) un bloque de pared 1x1 en la cuadrícula (col, row)."""
+        with self.lock:
+            if not (0 <= col < GRID_COLS and 0 <= row < GRID_ROWS):
+                return False
+            # Si vamos a colocar una pared, verificar que no haya un objeto ocupando esa celda
+            if wall_material is not None:
+                if wall_material not in WALL_MATERIALS:
+                    return False
+                if self.find_object_at_cell(col, row) is not None:
+                    return False
+            if self.office["wall_grid"][row][col] == wall_material:
+                return False
+            self.office["wall_grid"][row][col] = wall_material
+            self._save()
+            return True
+
+    def find_object_at_cell(self, col: int, row: int) -> Optional[Dict[str, Any]]:
+        """Devuelve el objeto que ocupa la cuadrícula (col, row), priorizando muebles/dispositivos sobre alfombras."""
+        with self.lock:
+            items = self.office.get("items", [])
+            # Primero buscar objetos bloqueantes (encima de alfombras)
+            for pass_blocking in (True, False):
+                for item in reversed(items):
+                    spec = OBJECT_CATALOG.get(item.get("type", ""))
+                    if not spec:
+                        continue
+                    if bool(spec.get("blocking", True)) != pass_blocking:
+                        continue
+                    ic, ir = int(item["col"]), int(item["row"])
+                    tw, th = int(spec["tile_w"]), int(spec["tile_h"])
+                    if ic <= col < ic + tw and ir <= row < ir + th:
+                        return copy.deepcopy(item)
+            return None
+
+    def can_place_object(
+        self,
+        obj_type: str,
+        col: int,
+        row: int,
+        ignore_item_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Verifica si un objeto de tamaño (tile_w x tile_h) cabe en las cuadrículas
+        a partir de (col, row) sin salirse del mapa ni chocar con paredes u otros objetos.
+        """
+        spec = OBJECT_CATALOG.get(obj_type)
+        if not spec:
+            return False
+        tw, th = int(spec["tile_w"]), int(spec["tile_h"])
+        if col < 0 or row < 0 or (col + tw) > GRID_COLS or (row + th) > GRID_ROWS:
+            return False
+
+        is_blocking = bool(spec.get("blocking", True))
+        with self.lock:
+            wgrid = self.office["wall_grid"]
+            for r in range(row, row + th):
+                for c in range(col, col + tw):
+                    if wgrid[r][c] is not None:
+                        return False
+
+            # Verificar colisión con otros objetos en la cuadrícula
+            for other in self.office.get("items", []):
+                if other.get("id") == ignore_item_id:
+                    continue
+                ospec = OBJECT_CATALOG.get(other.get("type", ""))
+                if not ospec:
+                    continue
+                # Una alfombra (blocking=False) puede coexistir debajo de un mueble (blocking=True)
+                if is_blocking != bool(ospec.get("blocking", True)):
+                    continue
+                oc, orow = int(other["col"]), int(other["row"])
+                otw, oth = int(ospec["tile_w"]), int(ospec["tile_h"])
+                if not (col + tw <= oc or oc + otw <= col or row + th <= orow or orow + oth <= row):
+                    return False
+
+        return True
+
+    def place_new_object(self, obj_type: str, col: int, row: int) -> Tuple[bool, str]:
+        with self.lock:
+            if not self.can_place_object(obj_type, col, row):
+                return False, "La cuadrícula está ocupada por una pared u otro objeto."
+            new_item = {
+                "id": f"obj-{uuid.uuid4().hex[:7]}",
+                "type": obj_type,
+                "col": int(col),
+                "row": int(row),
+            }
+            self.office.setdefault("items", []).append(new_item)
+            self._save()
+            return True, new_item["id"]
+
+    def move_object_to_cell(self, item_id: str, col: int, row: int) -> bool:
+        with self.lock:
+            target = None
+            for it in self.office.get("items", []):
+                if it.get("id") == item_id:
+                    target = it
+                    break
+            if not target:
+                return False
+            if not self.can_place_object(target["type"], col, row, ignore_item_id=item_id):
+                return False
+            target["col"] = int(col)
+            target["row"] = int(row)
+            self._save()
+            return True
+
+    def validate_minimum_stations(self, items: List[Dict[str, Any]]) -> Tuple[bool, str]:
+        """
+        Verifica que exista al menos 1 dispositivo/mueble para cada estación esencial
+        (mín. 1 Computador, mín. 1 Estantería de Libros, etc.).
+        """
+        station_counts: Dict[str, int] = {}
+        for it in items:
+            spec = OBJECT_CATALOG.get(it.get("type", ""))
+            if spec and spec.get("station"):
+                st = spec["station"]
+                station_counts[st] = station_counts.get(st, 0) + 1
+
+        for req_station, label in REQUIRED_STATIONS.items():
+            if station_counts.get(req_station, 0) < 1:
+                return (
+                    False,
+                    f"⚠️ Regla de la oficina: Debe existir como mínimo 1 {label} en la cuadrícula "
+                    f"para que los agentes puedan trabajar.",
+                )
+        return True, "OK"
+
+    def remove_object(self, item_id: str) -> Tuple[bool, str]:
+        with self.lock:
+            items = self.office.get("items", [])
+            remaining = [it for it in items if it.get("id") != item_id]
+            ok, msg = self.validate_minimum_stations(remaining)
+            if not ok:
+                return False, msg
+            self.office["items"] = remaining
+            self._save()
+            return True, "Objeto eliminado."
+
     # -------------------------------------------------------------------------
-    # CONTROL DE DEMANDA Y COLABORACIÓN / PAIR-PROGRAMMING EN DISPOSITIVOS
+    # PATHFINDING POR CUADRÍCULA (BFS EN EL MAPA 32x19)
+    # -------------------------------------------------------------------------
+    def get_blocked_cells(self) -> Set[Tuple[int, int]]:
+        with self.lock:
+            blocked: Set[Tuple[int, int]] = set()
+            wgrid = self.office["wall_grid"]
+            for r in range(GRID_ROWS):
+                for c in range(GRID_COLS):
+                    if wgrid[r][c] is not None:
+                        blocked.add((c, r))
+            for it in self.office.get("items", []):
+                spec = OBJECT_CATALOG.get(it.get("type", ""))
+                if spec and spec.get("blocking", True):
+                    ic, ir = int(it["col"]), int(it["row"])
+                    for r in range(ir, min(GRID_ROWS, ir + int(spec["tile_h"]))):
+                        for c in range(ic, min(GRID_COLS, ic + int(spec["tile_w"]))):
+                            blocked.add((c, r))
+            return blocked
+
+    def find_grid_path(
+        self,
+        start_cell: Tuple[int, int],
+        goal_cell: Tuple[int, int],
+    ) -> List[Tuple[int, int]]:
+        """
+        Encuentra el camino más corto por cuadrículas (arriba, abajo, izquierda, derecha)
+        esquivando paredes y muebles colocados por el usuario.
+        """
+        sc, sr = max(0, min(GRID_COLS - 1, start_cell[0])), max(0, min(GRID_ROWS - 1, start_cell[1]))
+        gc, gr = max(0, min(GRID_COLS - 1, goal_cell[0])), max(0, min(GRID_ROWS - 1, goal_cell[1]))
+        if (sc, sr) == (gc, gr):
+            return []
+
+        blocked = self.get_blocked_cells()
+        blocked.discard((sc, sr))
+        blocked.discard((gc, gr))
+
+        queue = deque([(sc, sr)])
+        came_from: Dict[Tuple[int, int], Optional[Tuple[int, int]]] = {(sc, sr): None}
+
+        while queue:
+            curr = queue.popleft()
+            if curr == (gc, gr):
+                break
+            cc, cr = curr
+            for dc, dr in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+                nc, nr = cc + dc, cr + dr
+                if 0 <= nc < GRID_COLS and 0 <= nr < GRID_ROWS:
+                    if (nc, nr) not in came_from and (nc, nr) not in blocked:
+                        came_from[(nc, nr)] = curr
+                        queue.append((nc, nr))
+
+        if (gc, gr) not in came_from:
+            # Si el usuario encerró la celda con paredes, camino directo de emergencia
+            return [(gc, gr)]
+
+        path: List[Tuple[int, int]] = []
+        node: Optional[Tuple[int, int]] = (gc, gr)
+        while node and node != (sc, sr):
+            path.append(node)
+            node = came_from.get(node)
+        path.reverse()
+        return path
+
+    # -------------------------------------------------------------------------
+    # CONTROL DE DEMANDA Y PAIR-PROGRAMMING EN CUADRÍCULAS
     # -------------------------------------------------------------------------
     def allocate_station_positions(self, agents_list: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         """
-        Dado el listado de agentes activos y la estación que cada uno necesita:
-        - Si hay suficientes dispositivos de esa estación (ej. 2 computadores y 2 agentes),
-          cada agente usa su propio dispositivo (role="primary").
-        - Si la demanda supera a los dispositivos disponibles (ej. 2 computadores y 3 agentes),
-          1 agente usa un computador y los otros 2 comparten el otro computador:
-          uno programa en el asiento principal (role="primary") y el otro se coloca a su lado
-          (role="collaborator") mirándolo como si estuviera revisando o discutiendo con él.
+        Asigna cada agente a una celda de cuadrícula frente a un dispositivo de su estación.
+        Si hay menos dispositivos que agentes (ej. 2 computadores y 3 agentes):
+          - 1 agente usa el computador 1
+          - Los otros 2 comparten el computador 2: uno en la celda principal programando
+            y el otro en la celda contigua mirándolo de lado (revisando / discutiendo juntos).
         """
         with self.lock:
-            devices = self.office.get("devices", [])
+            items = self.office.get("items", [])
             devices_by_station: Dict[str, List[Dict[str, Any]]] = {}
-            for dev in devices:
-                spec = DEVICE_CATALOG.get(dev.get("type", ""))
-                if spec:
-                    st = spec["station"]
-                    devices_by_station.setdefault(st, []).append(dev)
+            for it in items:
+                spec = OBJECT_CATALOG.get(it.get("type", ""))
+                if spec and spec.get("station"):
+                    devices_by_station.setdefault(spec["station"], []).append(it)
 
-            # Agrupar agentes por estación destino
             agents_by_station: Dict[str, List[Dict[str, Any]]] = {}
             for ag in agents_list:
                 st = ag.get("station", "lounge")
@@ -603,14 +964,16 @@ class CustomizationManager:
             allocations: Dict[str, Dict[str, Any]] = {}
 
             for st, st_agents in agents_by_station.items():
-                st_devices = devices_by_station.get(st, [])
-                if not st_devices:
-                    # Fallback seguro si no hubiera dispositivo
+                st_devs = devices_by_station.get(st, [])
+                if not st_devs:
                     for idx, ag in enumerate(st_agents):
+                        c, r = 25 + (idx % 4), 14 + (idx // 4)
                         allocations[ag["id"]] = {
                             "device_id": None,
-                            "x": 850 + (idx % 3) * 45,
-                            "y": 450 + (idx // 3) * 55,
+                            "col": c,
+                            "row": r,
+                            "x": c * TILE_SIZE + TILE_SIZE // 2,
+                            "y": r * TILE_SIZE + TILE_SIZE // 2,
                             "face": "down",
                             "role": "primary",
                             "is_collaborating": False,
@@ -618,51 +981,52 @@ class CustomizationManager:
                         }
                     continue
 
-                # Ordenar agentes de forma determinista para que no salten de asiento entre ticks
                 st_agents_sorted = sorted(st_agents, key=lambda a: a["id"])
-                num_devs = len(st_devices)
-
-                # Mapa de qué agentes quedaron asignados a cada dispositivo: dev_idx -> list of agents
+                num_devs = len(st_devs)
                 assigned_per_dev: Dict[int, List[Dict[str, Any]]] = {i: [] for i in range(num_devs)}
                 for idx, ag in enumerate(st_agents_sorted):
-                    # Determinar índice de dispositivo preferido
-                    dev_idx = idx % num_devs
-                    assigned_per_dev[dev_idx].append(ag)
+                    assigned_per_dev[idx % num_devs].append(ag)
 
                 for dev_idx, dev_agents in assigned_per_dev.items():
-                    dev = st_devices[dev_idx]
-                    spec = DEVICE_CATALOG[dev["type"]]
-                    dx, dy = dev["x"], dev["y"]
-                    sox, soy, sface = spec["seat_offset"]
-                    collab_offsets = spec["collab_offsets"]
+                    dev = st_devs[dev_idx]
+                    spec = OBJECT_CATALOG[dev["type"]]
+                    dc, dr = int(dev["col"]), int(dev["row"])
+                    sc_dx, sc_dy, sface = spec.get("seat_cell", (0, 1, "up"))
+                    collab_cells = spec.get("collab_cells", [(1, 1, "left"), (-1, 1, "right")])
 
                     has_collaborators = len(dev_agents) > 1
-                    primary_agent = dev_agents[0] if dev_agents else None
+                    primary_ag = dev_agents[0] if dev_agents else None
 
                     for rank, ag in enumerate(dev_agents):
                         if rank == 0:
-                            # Agente principal frente al computador / dispositivo
-                            partner_names = [a.get("name", a["id"][:6]) for a in dev_agents[1:]]
+                            tc = max(0, min(GRID_COLS - 1, dc + sc_dx))
+                            tr = max(0, min(GRID_ROWS - 1, dr + sc_dy))
+                            partners = [a.get("name", a["id"][:6]) for a in dev_agents[1:]]
                             allocations[ag["id"]] = {
                                 "device_id": dev["id"],
-                                "x": dx + sox,
-                                "y": dy + soy,
+                                "col": tc,
+                                "row": tr,
+                                "x": tc * TILE_SIZE + TILE_SIZE // 2,
+                                "y": tr * TILE_SIZE + TILE_SIZE // 2,
                                 "face": sface,
                                 "role": "primary",
                                 "is_collaborating": has_collaborators,
-                                "partner_name": ", ".join(partner_names) if partner_names else None,
+                                "partner_name": ", ".join(partners) if partners else None,
                             }
                         else:
-                            # Agente colaborador al lado del compañero revisando / discutiendo
-                            coff_x, coff_y, coff_face = collab_offsets[(rank - 1) % len(collab_offsets)]
+                            cdx, cdy, cface = collab_cells[(rank - 1) % len(collab_cells)]
+                            tc = max(0, min(GRID_COLS - 1, dc + cdx))
+                            tr = max(0, min(GRID_ROWS - 1, dr + cdy))
                             allocations[ag["id"]] = {
                                 "device_id": dev["id"],
-                                "x": dx + coff_x,
-                                "y": dy + coff_y,
-                                "face": coff_face,
+                                "col": tc,
+                                "row": tr,
+                                "x": tc * TILE_SIZE + TILE_SIZE // 2,
+                                "y": tr * TILE_SIZE + TILE_SIZE // 2,
+                                "face": cface,
                                 "role": "collaborator",
                                 "is_collaborating": True,
-                                "partner_name": primary_agent.get("name", primary_agent["id"][:6]) if primary_agent else None,
+                                "partner_name": primary_ag.get("name", primary_ag["id"][:6]) if primary_ag else None,
                             }
 
             return allocations

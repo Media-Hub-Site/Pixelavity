@@ -2,12 +2,15 @@
 """
 Pixelavity // Antigravity Live Visualizer — Native PyQt6 Desktop App
 Incluye:
-  1. Sprites Chibi Pixel Art con contorno oscuro en 4 direcciones (Adelante, Atrás, Izquierda, Derecha)
+  1. Sprites Pixel Art Chibi esculpidos de alto detalle (12 peinados con flequillos y volumen,
+     4 direcciones reales: Adelante, Atrás, Izquierda, Derecha)
   2. Creador de Personajes (3 por defecto + personalización completa y selección aleatoria sin repetir)
-  3. Personalizador de Background / Oficina (pisos, paredes, dispositivos y decoración arrastrables)
-  4. Validación de dispositivos mínimos (mín. 1 computador, 1 mueble de libros, etc.)
-  5. Colaboración automática ante demanda (Pair-Programming: si hay 2 computadores y 3 agentes,
-     1 usa un computador y los otros 2 comparten el otro programando y revisando juntos).
+  3. Constructor de Oficina 100% basado en Cuadrículas (32x19 celdas de 32x32 px) con menú por categorías
+     al estilo Pixel Agents (💻 Dispositivos, 🪑 Muebles, 🪴 Decoración, 🎨 Pisos, 🧱 Paredes)
+  4. Pintado de pisos en dos modos: 🖌️ Modo 1x1 (uno por uno) y 🪣 Modo Rellenar (Flood-Fill)
+  5. Pathfinding inteligente por cuadrículas (los agentes esquivan muros y muebles colocados)
+  6. Colaboración automática ante demanda (Pair-Programming en celdas contiguas cuando hay más agentes
+     que computadores o muebles).
 """
 
 import os
@@ -39,97 +42,34 @@ if BASE_DIR not in sys.path:
 from core.watcher import AntigravityBrainWatcher
 from core.customization import (
     CustomizationManager,
+    GRID_COLS,
+    GRID_ROWS,
+    TILE_SIZE,
+    WORLD_W,
+    WORLD_H,
     FLOOR_MATERIALS,
-    DEVICE_CATALOG,
-    DECORATION_CATALOG,
+    WALL_MATERIALS,
+    OBJECT_CATALOG,
     DEFAULT_CHARACTERS,
 )
 from core.sprites import SPRITE_ENGINE
-from core.dialogs_qt import CharacterCreatorDialog, OfficeEditorBar
+from core.dialogs_qt import CharacterCreatorDialog, OfficeBuilderDock
 
 
-WORLD_W = 1040
-WORLD_H = 620
-HALLWAY_Y = 294
-
-STATIONS: Dict[str, Dict[str, Any]] = {
-    "library": {
-        "id": "library",
-        "icon": "📚",
-        "title": "BIBLIOTECA",
-        "rect": (20, 20, 244, 240),
-        "door": (142, 260),
-        "accent": "#d49a6a",
-    },
-    "strategy_board": {
-        "id": "strategy_board",
-        "icon": "💭",
-        "title": "ESTRATEGIA",
-        "rect": (278, 20, 232, 240),
-        "door": (394, 260),
-        "accent": "#38bdf8",
-    },
-    "orchestrator_hub": {
-        "id": "orchestrator_hub",
-        "icon": "🎛️",
-        "title": "ORCHESTRATOR",
-        "rect": (524, 20, 240, 240),
-        "door": (644, 260),
-        "accent": "#fbbf24",
-    },
-    "web_station": {
-        "id": "web_station",
-        "icon": "🌐",
-        "title": "CABINA WEB",
-        "rect": (778, 20, 242, 240),
-        "door": (899, 260),
-        "accent": "#22d3ee",
-    },
-    "coding_desk": {
-        "id": "coding_desk",
-        "icon": "💻",
-        "title": "COMPUTADORES",
-        "rect": (20, 328, 344, 272),
-        "door": (192, 328),
-        "accent": "#34d399",
-    },
-    "server_lab": {
-        "id": "server_lab",
-        "icon": "⚡",
-        "title": "TERMINAL LAB",
-        "rect": (378, 328, 218, 272),
-        "door": (487, 328),
-        "accent": "#fb923c",
-    },
-    "art_studio": {
-        "id": "art_studio",
-        "icon": "🎨",
-        "title": "ESTUDIO UI",
-        "rect": (610, 328, 154, 272),
-        "door": (687, 328),
-        "accent": "#e879f9",
-    },
-    "lounge": {
-        "id": "lounge",
-        "icon": "☕",
-        "title": "CAFETERÍA & LOUNGE",
-        "rect": (778, 328, 242, 272),
-        "door": (899, 328),
-        "accent": "#f87171",
-    },
+STATION_LABELS: Dict[str, Tuple[str, str]] = {
+    "library":          ("📚", "BIBLIOTECA"),
+    "strategy_board":   ("💭", "ESTRATEGIA"),
+    "orchestrator_hub": ("🎛️", "ORCHESTRATOR"),
+    "web_station":      ("🌐", "CABINA WEB"),
+    "coding_desk":      ("💻", "COMPUTADORES"),
+    "server_lab":       ("⚡", "TERMINAL LAB"),
+    "art_studio":       ("🎨", "ESTUDIO UI"),
+    "lounge":           ("☕", "CAFETERÍA & LOUNGE"),
 }
 
 
-def find_room_at(wx: float, wy: float) -> str:
-    for sid, st in STATIONS.items():
-        rx, ry, rw, rh = st["rect"]
-        if rx <= wx <= rx + rw and ry <= wy <= ry + rh:
-            return sid
-    return "hallway"
-
-
 # =============================================================================
-# ENTIDAD DE AGENTE CON SOPORTE 4 DIRECCIONES Y MODO COLABORACIÓN
+# ENTIDAD DE AGENTE CON PATHFINDING POR CUADRÍCULA Y 4 DIRECCIONES
 # =============================================================================
 class QtAgentEntity:
     def __init__(self, data: Dict[str, Any]):
@@ -142,27 +82,26 @@ class QtAgentEntity:
         self.hold_timer = 0.0
 
         init_st = data.get("station", "lounge")
-        if init_st not in STATIONS:
+        if init_st not in STATION_LABELS:
             init_st = "lounge"
         self.current_station = init_st
 
-        # Datos de colaboración / dispositivo asignado
         self.assigned_device_id: Optional[str] = None
-        self.target_x: float = 880.0
-        self.target_y: float = 440.0
+        self.target_col: int = 25
+        self.target_row: int = 15
+        self.target_x: float = 25 * TILE_SIZE + TILE_SIZE / 2
+        self.target_y: float = 15 * TILE_SIZE + TILE_SIZE / 2
         self.target_face: str = "down"
         self.role: str = "primary"
         self.is_collaborating: bool = False
         self.partner_name: Optional[str] = None
 
-        # Personaje visual asignado del pool del usuario
         self.character: Dict[str, Any] = DEFAULT_CHARACTERS[0]
-
         self.sync_metadata(data)
 
         if self.is_subagent:
-            self.x = 708.0
-            self.y = 114.0
+            self.x = 19 * TILE_SIZE + TILE_SIZE / 2
+            self.y = 4 * TILE_SIZE + TILE_SIZE / 2
             self.spawn_timer = 1.4
         else:
             self.x = self.target_x
@@ -170,6 +109,12 @@ class QtAgentEntity:
             self.spawn_timer = 0.6
 
         self.face = "down"
+
+    def current_cell(self) -> Tuple[int, int]:
+        return (
+            max(0, min(GRID_COLS - 1, int(self.x // TILE_SIZE))),
+            max(0, min(GRID_ROWS - 1, int(self.y // TILE_SIZE))),
+        )
 
     def sync_metadata(self, data: Dict[str, Any]):
         self.short_id = data.get("short_id", self.id[:8])
@@ -190,7 +135,7 @@ class QtAgentEntity:
             self.detail = data.get("detail", "")
             self.activity = data.get("activity", "idle")
             st = data.get("station", "lounge")
-            if st in STATIONS and st != self.current_station:
+            if st in STATION_LABELS and st != self.current_station:
                 self.enqueue_action({
                     "station": st,
                     "activity": self.activity,
@@ -198,36 +143,50 @@ class QtAgentEntity:
                     "detail": self.detail,
                 })
 
-    def apply_slot_allocation(self, alloc: Dict[str, Any], show_walls: bool = True):
-        """
-        Actualiza el destino físico del agente según el dispositivo que le tocó
-        (y si está en modo colaboración / pair-programming al lado de otro compañero).
-        """
+    def apply_slot_allocation(self, alloc: Dict[str, Any], manager: CustomizationManager):
+        new_col = int(alloc["col"])
+        new_row = int(alloc["row"])
         new_tx = float(alloc["x"])
         new_ty = float(alloc["y"])
         new_face = alloc.get("face", "up")
+
         self.assigned_device_id = alloc.get("device_id")
         self.role = alloc.get("role", "primary")
         self.is_collaborating = bool(alloc.get("is_collaborating", False))
         self.partner_name = alloc.get("partner_name")
 
-        # Si el destino cambió significativamente y no está ya caminando hacia él, trazar ruta
-        if math.hypot(new_tx - self.target_x, new_ty - self.target_y) > 6.0:
+        if (new_col, new_row) != (self.target_col, self.target_row) or math.hypot(new_tx - self.target_x, new_ty - self.target_y) > 8.0:
+            self.target_col = new_col
+            self.target_row = new_row
             self.target_x = new_tx
             self.target_y = new_ty
             self.target_face = new_face
-            if not self.is_walking:
-                self._build_path_to(new_tx, new_ty, new_face, show_walls)
-            elif self.waypoints:
-                self.waypoints[-1] = (new_tx, new_ty, new_face)
+            self._build_grid_path(manager, (new_col, new_row), new_face)
         else:
             self.target_face = new_face
             if not self.is_walking:
                 self.face = new_face
 
+    def _build_grid_path(self, manager: CustomizationManager, goal_cell: Tuple[int, int], final_face: str):
+        start_cell = self.current_cell()
+        cells = manager.find_grid_path(start_cell, goal_cell)
+        if not cells:
+            self.waypoints = [(
+                goal_cell[0] * TILE_SIZE + TILE_SIZE / 2,
+                goal_cell[1] * TILE_SIZE + TILE_SIZE / 2,
+                final_face,
+            )]
+        else:
+            pts: List[Tuple[float, float, Optional[str]]] = []
+            for idx, (c, r) in enumerate(cells):
+                f = final_face if idx == len(cells) - 1 else None
+                pts.append((c * TILE_SIZE + TILE_SIZE / 2, r * TILE_SIZE + TILE_SIZE / 2, f))
+            self.waypoints = pts
+        self.is_walking = True
+
     def enqueue_action(self, ev: Dict[str, Any]):
         st = ev.get("station")
-        if st not in STATIONS:
+        if st not in STATION_LABELS:
             return
         if self.action_queue and self.action_queue[-1]["station"] == st and self.action_queue[-1]["badge"] == ev.get("badge"):
             return
@@ -240,31 +199,9 @@ class QtAgentEntity:
         if len(self.action_queue) > 6:
             self.action_queue.pop(0)
 
-    def _build_path_to(self, tx: float, ty: float, tface: str, show_walls: bool = True):
-        pts: List[Tuple[float, float, Optional[str]]] = []
-        from_room = find_room_at(self.x, self.y)
-        to_room = find_room_at(tx, ty)
-
-        if show_walls and from_room != to_room:
-            if from_room in STATIONS:
-                fdx, fdy = STATIONS[from_room]["door"]
-                pts.append((float(fdx), float(fdy), None))
-                pts.append((float(fdx), float(HALLWAY_Y), None))
-            else:
-                pts.append((self.x, float(HALLWAY_Y), None))
-
-            if to_room in STATIONS:
-                tdx, tdy = STATIONS[to_room]["door"]
-                pts.append((float(tdx), float(HALLWAY_Y), None))
-                pts.append((float(tdx), float(tdy), None))
-            else:
-                pts.append((tx, float(HALLWAY_Y), None))
-
-        pts.append((tx, ty, tface))
-        self.waypoints = pts
-        self.is_walking = True
-
-    def update(self, dt: float, particles: List[Dict[str, Any]], show_walls: bool = True):
+    def update(self, dt: float, particles: List[Dict[str, Any]]) -> bool:
+        """Devuelve True si cambió de estación y requiere recalcular posiciones."""
+        station_changed = False
         if self.spawn_timer > 0:
             self.spawn_timer = max(0.0, self.spawn_timer - dt)
 
@@ -274,7 +211,7 @@ class QtAgentEntity:
             dx = wx - self.x
             dy = wy - self.y
             dist = math.hypot(dx, dy)
-            speed = 185.0 if len(self.action_queue) > 1 else 135.0
+            speed = 180.0 if len(self.action_queue) > 1 else 130.0
 
             if dist <= speed * dt:
                 self.x = float(wx)
@@ -290,7 +227,6 @@ class QtAgentEntity:
             else:
                 self.x += (dx / dist) * speed * dt
                 self.y += (dy / dist) * speed * dt
-                # Actualizar dirección de sprite (4 direcciones: adelante, atrás, izquierda, derecha)
                 if abs(dx) > abs(dy):
                     self.face = "right" if dx > 0 else "left"
                 else:
@@ -305,18 +241,18 @@ class QtAgentEntity:
                         "y": self.y + 13,
                         "vx": 0.0,
                         "vy": -7.0,
-                        "life": 0.32,
-                        "max_life": 0.32,
+                        "life": 0.30,
+                        "max_life": 0.30,
                         "type": "dust",
                         "color": "#b4d2ff",
                     })
-            return
+            return False
 
         self.is_walking = False
         if self.hold_timer > 0:
             self.hold_timer = max(0.0, self.hold_timer - dt)
 
-        rate = 0.4 if self.current_station == "lounge" else (2.2 if self.is_collaborating else 1.6)
+        rate = 0.35 if self.current_station == "lounge" else (2.2 if self.is_collaborating else 1.5)
         if random.random() < dt * rate:
             self._emit_particle(particles)
 
@@ -327,7 +263,10 @@ class QtAgentEntity:
             self.activity = nxt["activity"]
             if nxt["station"] != self.current_station:
                 self.current_station = nxt["station"]
+                station_changed = True
             self.hold_timer = 2.0
+
+        return station_changed
 
     def _emit_particle(self, particles: List[Dict[str, Any]]):
         if self.is_collaborating and self.current_station != "lounge":
@@ -335,20 +274,20 @@ class QtAgentEntity:
             color = "#fbbf24" if self.role == "collaborator" else "#38bdf8"
         else:
             table = {
-                "coding_desk": (["</>", "{ }", "01"], "#34d399"),
-                "library": (["📖", "doc", "🔍"], "#fbbf24"),
-                "server_lab": (["⚡", "$>", "OK"], "#fb923c"),
-                "strategy_board": (["💭", "💡"], "#38bdf8"),
+                "coding_desk":      (["</>", "{ }", "01"], "#34d399"),
+                "library":          (["📖", "doc", "🔍"], "#fbbf24"),
+                "server_lab":       (["⚡", "$>", "OK"], "#fb923c"),
+                "strategy_board":   (["💭", "💡"], "#38bdf8"),
                 "orchestrator_hub": (["📡", "⚡"], "#fbbf24"),
-                "web_station": (["🌐", "200"], "#22d3ee"),
-                "art_studio": (["✨", "UI"], "#e879f9"),
-                "lounge": (["~"], "#94a3b8"),
+                "web_station":      (["🌐", "200"], "#22d3ee"),
+                "art_studio":       (["✨", "UI"], "#e879f9"),
+                "lounge":           (["~"], "#94a3b8"),
             }
             syms, color = table.get(self.current_station, (["✨"], "#38bdf8"))
 
         particles.append({
             "x": self.x + random.uniform(-8, 8),
-            "y": self.y - 26,
+            "y": self.y - 32,
             "vx": random.uniform(-4, 4),
             "vy": random.uniform(-24, -16),
             "life": 1.0,
@@ -360,7 +299,7 @@ class QtAgentEntity:
 
 
 # =============================================================================
-# LIENZO 2D PIXEL ART (MODO ESPECTADOR + MODO EDICIÓN DE BACKGROUND)
+# LIENZO 2D BASADO EN CUADRÍCULAS 32x19 (ESPECTADOR + CONSTRUCTOR PIXEL AGENTS)
 # =============================================================================
 class PixelOfficeWidget(QWidget):
     def __init__(self, manager: CustomizationManager, on_select_agent, parent=None):
@@ -374,11 +313,14 @@ class PixelOfficeWidget(QWidget):
         self.hovered_agent_id: Optional[str] = None
         self.filter_mode: str = "all"
 
-        # Estado del Modo Edición de Oficina / Background
+        # Modo Constructor por Cuadrículas
         self.edit_mode: bool = False
-        self.editor_bar: Optional[OfficeEditorBar] = None
-        self.dragging_item_id: Optional[str] = None
-        self.hovered_item_id: Optional[str] = None
+        self.builder_dock: Optional[OfficeBuilderDock] = None
+        self.hover_col: int = -1
+        self.hover_row: int = -1
+        self.moving_item_id: Optional[str] = None
+        self.moving_item_type: Optional[str] = None
+        self._mouse_painting: bool = False
 
         self.setMouseTracking(True)
         self.setMinimumSize(720, 440)
@@ -404,6 +346,12 @@ class PixelOfficeWidget(QWidget):
             return 0.0, 0.0
         return (sx - ox) / scale, (sy - oy) / scale
 
+    def _world_to_cell(self, wx: float, wy: float) -> Tuple[int, int]:
+        return (
+            max(0, min(GRID_COLS - 1, int(wx // TILE_SIZE))),
+            max(0, min(GRID_ROWS - 1, int(wy // TILE_SIZE))),
+        )
+
     def _visible_entities(self) -> List[QtAgentEntity]:
         return [
             e for e in self.entities.values()
@@ -411,12 +359,6 @@ class PixelOfficeWidget(QWidget):
         ]
 
     def refresh_allocations(self):
-        """
-        Recalcula los personajes asignados a cada agente y sus posiciones frente a los
-        dispositivos del mapa (activando Pair-Programming cuando hay más agentes que dispositivos).
-        """
-        office = self.manager.get_office_layout()
-        show_walls = bool(office.get("show_room_walls", True))
         all_ids = list(self.entities.keys())
         char_map = self.manager.assign_characters_to_agents(all_ids)
         for aid, ent in self.entities.items():
@@ -430,18 +372,20 @@ class PixelOfficeWidget(QWidget):
         allocs = self.manager.allocate_station_positions(agents_payload)
         for aid, alloc in allocs.items():
             if aid in self.entities:
-                self.entities[aid].apply_slot_allocation(alloc, show_walls=show_walls)
+                self.entities[aid].apply_slot_allocation(alloc, self.manager)
 
     def _tick(self):
         now = time.perf_counter()
         dt = min(0.1, now - self._last_time)
         self._last_time = now
 
-        office = self.manager.get_office_layout()
-        show_walls = bool(office.get("show_room_walls", True))
-
+        need_realloc = False
         for ent in self.entities.values():
-            ent.update(dt, self.particles, show_walls=show_walls)
+            if ent.update(dt, self.particles):
+                need_realloc = True
+
+        if need_realloc:
+            self.refresh_allocations()
 
         for i in range(len(self.particles) - 1, -1, -1):
             p = self.particles[i]
@@ -454,38 +398,32 @@ class PixelOfficeWidget(QWidget):
 
         self.update()
 
-    def _find_item_at(self, wx: float, wy: float) -> Optional[Dict[str, Any]]:
-        office = self.manager.get_office_layout()
-        # Buscar primero en dispositivos y decoraciones (de arriba hacia abajo)
-        for d in reversed(office.get("devices", [])):
-            spec = DEVICE_CATALOG.get(d["type"], {"w": 64, "h": 44})
-            w, h = spec["w"], spec["h"]
-            if (d["x"] - w / 2) <= wx <= (d["x"] + w / 2) and (d["y"] - h / 2) <= wy <= (d["y"] + h / 2):
-                return {"kind": "device", "item": d, "spec": spec}
-        for dec in reversed(office.get("decorations", [])):
-            spec = DECORATION_CATALOG.get(dec["type"], {"w": 32, "h": 32})
-            w, h = spec["w"], spec["h"]
-            if (dec["x"] - w / 2) <= wx <= (dec["x"] + w / 2) and (dec["y"] - h / 2) <= wy <= (dec["y"] + h / 2):
-                return {"kind": "decoration", "item": dec, "spec": spec}
-        return None
-
+    # -------------------------------------------------------------------------
+    # INTERACCIÓN CON EL MOUSE POR CUADRÍCULAS (32x19)
+    # -------------------------------------------------------------------------
     def mouseMoveEvent(self, event):
         wx, wy = self._screen_to_world(event.position().x(), event.position().y())
+        col, row = self._world_to_cell(wx, wy)
+        self.hover_col, self.hover_row = col, row
 
-        if self.edit_mode:
-            if self.dragging_item_id:
-                self.manager.move_item(self.dragging_item_id, int(wx), int(wy))
-                self.refresh_allocations()
-                self.update()
-                return
-            hit = self._find_item_at(wx, wy)
-            self.hovered_item_id = hit["item"]["id"] if hit else None
-            self.setCursor(Qt.CursorShape.OpenHandCursor if hit else Qt.CursorShape.CrossCursor)
+        if self.edit_mode and self.builder_dock:
+            tmode = self.builder_dock.tool_mode
+            if self._mouse_painting:
+                if tmode == "floor_1x1":
+                    self.manager.paint_floor_tile(col, row, self.builder_dock.selected_floor_material)
+                elif tmode == "wall_place":
+                    self.manager.set_wall_tile(col, row, self.builder_dock.selected_wall_material)
+                elif tmode == "wall_erase":
+                    self.manager.set_wall_tile(col, row, None)
+                elif tmode == "move" and self.moving_item_id:
+                    if self.manager.move_object_to_cell(self.moving_item_id, col, row):
+                        self.refresh_allocations()
+            self.update()
             return
 
         found = None
         for ent in self._visible_entities():
-            if math.hypot(wx - ent.x, wy - (ent.y - 8)) <= 24:
+            if math.hypot(wx - ent.x, wy - (ent.y - 12)) <= 26:
                 found = ent.id
                 break
         self.hovered_agent_id = found
@@ -493,45 +431,80 @@ class PixelOfficeWidget(QWidget):
 
     def mousePressEvent(self, event):
         wx, wy = self._screen_to_world(event.position().x(), event.position().y())
+        col, row = self._world_to_cell(wx, wy)
+        self.hover_col, self.hover_row = col, row
 
-        if self.edit_mode:
-            hit = self._find_item_at(wx, wy)
-            if event.button() == Qt.MouseButton.LeftButton:
-                if hit:
-                    self.dragging_item_id = hit["item"]["id"]
-                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
-                elif self.editor_bar:
-                    # Pintar el piso de la sala o corredor clicado
-                    room_id = find_room_at(wx, wy)
-                    mat_id = self.editor_bar.selected_floor_material()
-                    self.manager.set_room_floor(room_id, mat_id)
-                    self.update()
-            elif event.button() == Qt.MouseButton.RightButton and hit:
-                item_id = hit["item"]["id"]
-                if hit["kind"] == "device":
-                    ok, msg = self.manager.remove_device(item_id)
+        if self.edit_mode and self.builder_dock:
+            tmode = self.builder_dock.tool_mode
+
+            # Clic derecho siempre elimina el objeto o pared en la cuadrícula clicada
+            if event.button() == Qt.MouseButton.RightButton or (
+                event.button() == Qt.MouseButton.LeftButton and tmode == "delete"
+            ):
+                hit_obj = self.manager.find_object_at_cell(col, row)
+                if hit_obj:
+                    ok, msg = self.manager.remove_object(hit_obj["id"])
                     if not ok:
-                        QMessageBox.warning(self, "Regla Mínima de Dispositivos", msg)
+                        QMessageBox.warning(self, "Regla de Dispositivos Mínimos", msg)
                     else:
                         self.refresh_allocations()
                 else:
-                    self.manager.remove_decoration(item_id)
+                    self.manager.set_wall_tile(col, row, None)
+                self.update()
+                return
+
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._mouse_painting = True
+                if tmode == "floor_1x1":
+                    self.manager.paint_floor_tile(col, row, self.builder_dock.selected_floor_material)
+                elif tmode == "floor_fill":
+                    self.manager.flood_fill_floor(col, row, self.builder_dock.selected_floor_material)
+                elif tmode == "wall_place":
+                    self.manager.set_wall_tile(col, row, self.builder_dock.selected_wall_material)
+                    self.refresh_allocations()
+                elif tmode == "wall_erase":
+                    self.manager.set_wall_tile(col, row, None)
+                    self.refresh_allocations()
+                elif tmode == "place_object":
+                    obj_type = self.builder_dock.selected_object_type
+                    # Si hace clic sobre un objeto existente con el mismo tipo o quiere moverlo:
+                    ok, _ = self.manager.place_new_object(obj_type, col, row)
+                    if ok:
+                        self.refresh_allocations()
+                    else:
+                        # Si hizo clic sobre un objeto ya existente, permitir arrastrarlo por la cuadrícula
+                        hit_obj = self.manager.find_object_at_cell(col, row)
+                        if hit_obj:
+                            self.moving_item_id = hit_obj["id"]
+                            self.moving_item_type = hit_obj["type"]
+                elif tmode == "move":
+                    hit_obj = self.manager.find_object_at_cell(col, row)
+                    if hit_obj:
+                        self.moving_item_id = hit_obj["id"]
+                        self.moving_item_type = hit_obj["type"]
                 self.update()
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
             for ent in self._visible_entities():
-                if math.hypot(wx - ent.x, wy - (ent.y - 8)) <= 24:
+                if math.hypot(wx - ent.x, wy - (ent.y - 12)) <= 26:
                     self.selected_agent_id = ent.id
                     self.on_select_agent(ent.id)
                     return
 
     def mouseReleaseEvent(self, event):
-        if self.dragging_item_id:
-            self.dragging_item_id = None
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self._mouse_painting = False
+        if self.moving_item_id:
+            if 0 <= self.hover_col < GRID_COLS and 0 <= self.hover_row < GRID_ROWS:
+                self.manager.move_object_to_cell(self.moving_item_id, self.hover_col, self.hover_row)
+            self.moving_item_id = None
+            self.moving_item_type = None
             self.refresh_allocations()
+            self.update()
 
+    # -------------------------------------------------------------------------
+    # RENDERIZADO DEL MUNDO EN CUADRÍCULAS 32x19
+    # -------------------------------------------------------------------------
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -545,14 +518,12 @@ class PixelOfficeWidget(QWidget):
         visible = self._visible_entities()
         visible.sort(key=lambda e: e.y)
 
-        self._draw_world(painter, now_sec, visible)
+        self._draw_tile_world(painter, now_sec, visible)
         self._draw_orchestrator_links(painter, now_sec, visible)
 
-        # Capa 1: Sprites Chibi en 4 direcciones
         for ent in visible:
             self._draw_agent_body(painter, ent, now_sec)
 
-        # Capa 2: Etiquetas de fondo
         priority = None
         for ent in visible:
             if ent.id in (self.hovered_agent_id, self.selected_agent_id):
@@ -560,9 +531,11 @@ class PixelOfficeWidget(QWidget):
                 continue
             self._draw_agent_overlay(painter, ent, now_sec, force_full=False)
 
-        # Capa 3: Agente seleccionado o bajo cursor siempre al frente
         if priority:
             self._draw_agent_overlay(painter, priority, now_sec, force_full=True)
+
+        if self.edit_mode:
+            self._draw_grid_editor_overlay(painter)
 
         self._draw_particles(painter)
         painter.end()
@@ -579,216 +552,231 @@ class PixelOfficeWidget(QWidget):
         p.drawRoundedRect(QRectF(x, y, w, h), radius, radius)
         p.setBrush(Qt.BrushStyle.NoBrush)
 
-    def _draw_floor_area(self, p: QPainter, x: int, y: int, w: int, h: int, mat_id: str):
-        mat = FLOOR_MATERIALS.get(mat_id, FLOOR_MATERIALS["walnut_wood"])
-        cA, cB = QColor(mat["colorA"]), QColor(mat["colorB"])
-        pat = mat.get("pattern", "tiles")
-        tile = 16
-
-        for ty in range(y, y + h, tile):
-            for tx in range(x, x + w, tile):
-                tw = min(tile, x + w - tx)
-                th = min(tile, y + h - ty)
-                if pat == "planks":
-                    row_even = (((ty - y) // 8) % 2) == 0
-                    p.fillRect(tx, ty, tw, th, cA if row_even else cB)
-                    p.fillRect(tx, ty, tw, 1, cB)
-                elif pat == "grate":
-                    p.fillRect(tx, ty, tw, th, cA)
-                    p.fillRect(tx + 2, ty + 2, max(1, tw - 4), max(1, th - 4), cB)
-                else:
-                    even = (((tx - x) // tile + (ty - y) // tile) % 2) == 0
-                    p.fillRect(tx, ty, tw, th, cA if even else cB)
-
-    def _draw_world(self, p: QPainter, now_sec: float, visible: List[QtAgentEntity]):
+    def _draw_tile_world(self, p: QPainter, now_sec: float, visible: List[QtAgentEntity]):
         office = self.manager.get_office_layout()
-        room_floors = office.get("room_floors", {})
-        hallway_mat = office.get("hallway_floor", "marble_slate")
-        show_walls = bool(office.get("show_room_walls", True))
+        fgrid = office.get("floor_grid", [])
+        wgrid = office.get("wall_grid", [])
+        items = office.get("items", [])
 
-        occupied: Dict[str, int] = {}
-        active_device_ids = set()
-        for e in visible:
-            occupied[e.current_station] = occupied.get(e.current_station, 0) + 1
-            if not e.is_walking and e.assigned_device_id:
-                active_device_ids.add(e.assigned_device_id)
+        active_device_ids = {
+            e.assigned_device_id for e in visible
+            if not e.is_walking and e.assigned_device_id
+        }
 
-        p.fillRect(0, 0, WORLD_W, WORLD_H, QColor("#080b13"))
+        # 1. DIBUJAR CADA CUADRÍCULA DE PISO (32x19)
+        for r in range(GRID_ROWS):
+            for c in range(GRID_COLS):
+                mat_id = fgrid[r][c] if (r < len(fgrid) and c < len(fgrid[r])) else "marble_slate"
+                mat = FLOOR_MATERIALS.get(mat_id, FLOOR_MATERIALS["marble_slate"])
+                x0, y0 = c * TILE_SIZE, r * TILE_SIZE
+                cA, cB = QColor(mat["colorA"]), QColor(mat["colorB"])
+                pat = mat.get("pattern", "tiles")
 
-        # Piso del corredor central (o piso base si las paredes están desactivadas)
-        if show_walls:
-            self._draw_floor_area(p, 20, 264, WORLD_W - 40, 60, hallway_mat)
-            p.setPen(QPen(QColor("#1d283f"), 1))
-            p.drawRect(20, 264, WORLD_W - 40, 60)
-        else:
-            self._draw_floor_area(p, 20, 20, WORLD_W - 40, WORLD_H - 40, hallway_mat)
-
-        # Salas
-        for sid, st in STATIONS.items():
-            x, y, w, h = st["rect"]
-            cnt = occupied.get(sid, 0)
-            is_working = cnt > 0 and sid != "lounge"
-            mat_id = room_floors.get(sid, "walnut_wood")
-            self._draw_floor_area(p, x, y, w, h, mat_id)
-
-            if show_walls:
-                p.setPen(QPen(QColor(st["accent"] if is_working else "#23304a"), 2 if is_working else 1))
-                p.drawRect(x, y, w, h)
-                dx, dy = st["door"]
-                if dy <= 270:
-                    p.fillRect(dx - 18, y + h - 3, 36, 6, QColor("#151d2e"))
+                if pat == "planks":
+                    p.fillRect(x0, y0, TILE_SIZE, TILE_SIZE, cA if (r % 2 == 0) else cB)
+                    p.fillRect(x0, y0 + 15, TILE_SIZE, 1, cB)
+                    p.fillRect(x0, y0 + 31, TILE_SIZE, 1, cB)
+                elif pat == "grate":
+                    p.fillRect(x0, y0, TILE_SIZE, TILE_SIZE, cA)
+                    p.fillRect(x0 + 3, y0 + 3, TILE_SIZE - 6, TILE_SIZE - 6, cB)
+                elif pat == "checkers":
+                    p.fillRect(x0, y0, 16, 16, cA)
+                    p.fillRect(x0 + 16, y0, 16, 16, cB)
+                    p.fillRect(x0, y0 + 16, 16, 16, cB)
+                    p.fillRect(x0 + 16, y0 + 16, 16, 16, cA)
                 else:
-                    p.fillRect(dx - 18, y - 3, 36, 6, QColor("#151d2e"))
+                    even = ((c + r) % 2) == 0
+                    p.fillRect(x0, y0, TILE_SIZE, TILE_SIZE, cA if even else cB)
 
-            # Cabecera de la zona
-            p.fillRect(x + 1, y + 1, w - 2, 24, QColor(10, 14, 24, 195))
-            p.setPen(QColor(st["accent"] if is_working else "#94a3b8"))
-            p.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
-            p.drawText(x + 10, y + 16, f"{st['icon']} {st['title']}")
+        # 2. DIBUJAR PAREDES 1x1 CON RELIEVE 3D TOP-DOWN
+        for r in range(GRID_ROWS):
+            for c in range(GRID_COLS):
+                w_id = wgrid[r][c] if (r < len(wgrid) and c < len(wgrid[r])) else None
+                if not w_id:
+                    continue
+                wspec = WALL_MATERIALS.get(w_id, WALL_MATERIALS["dark_tech"])
+                x0, y0 = c * TILE_SIZE, r * TILE_SIZE
+                p.fillRect(x0, y0, TILE_SIZE, TILE_SIZE - 8, QColor(wspec["top"]))
+                p.fillRect(x0, y0 + TILE_SIZE - 8, TILE_SIZE, 8, QColor(wspec["front"]))
+                p.setPen(QPen(QColor(wspec["border"]), 1))
+                p.drawRect(x0, y0, TILE_SIZE - 1, TILE_SIZE - 1)
 
-            if cnt > 0:
-                self._round_pill(p, x + w - 28, y + 5, 20, 14, 7, QColor(56, 189, 248, 40))
-                p.setPen(QColor(st["accent"] if is_working else "#cbd5e1"))
-                p.drawText(QRectF(x + w - 28, y + 5, 20, 14), Qt.AlignmentFlag.AlignCenter, str(cnt))
+        # 3. DIBUJAR ALFOMBRAS PRIMERO (blocking=False) Y LUEGO MUEBLES/DISPOSITIVOS (blocking=True)
+        for pass_blocking in (False, True):
+            for it in items:
+                spec = OBJECT_CATALOG.get(it.get("type", ""))
+                if not spec or bool(spec.get("blocking", True)) != pass_blocking:
+                    continue
+                is_act = it.get("id") in active_device_ids
+                self._draw_grid_item(p, it, spec, is_act, now_sec)
 
-        # Dibujar Decoraciones colocadas por el usuario
-        for dec in office.get("decorations", []):
-            self._draw_decoration(p, dec, now_sec)
+    def _draw_grid_item(self, p: QPainter, it: Dict[str, Any], spec: Dict[str, Any], is_active: bool, now_sec: float):
+        otype = it["type"]
+        x = int(it["col"]) * TILE_SIZE
+        y = int(it["row"]) * TILE_SIZE
+        w = int(spec["tile_w"]) * TILE_SIZE
+        h = int(spec["tile_h"]) * TILE_SIZE
+        cx, cy = x + w // 2, y + h // 2
 
-        # Dibujar Dispositivos Interactivos colocados por el usuario
-        for dev in office.get("devices", []):
-            is_active = dev.get("id") in active_device_ids
-            self._draw_device(p, dev, is_active, now_sec)
-
-        if self.edit_mode:
-            p.setPen(QPen(QColor(56, 189, 248, 180), 2, Qt.PenStyle.DashLine))
-            p.drawRect(4, 4, WORLD_W - 8, WORLD_H - 8)
-
-    def _draw_device(self, p: QPainter, dev: Dict[str, Any], is_active: bool, now_sec: float):
-        dtype = dev.get("type", "computer_desk")
-        spec = DEVICE_CATALOG.get(dtype, DEVICE_CATALOG["computer_desk"])
-        cx, cy = int(dev["x"]), int(dev["y"])
-        w, h = spec["w"], spec["h"]
-        x, y = cx - w // 2, cy - h // 2
-        is_hov = self.edit_mode and (dev.get("id") == self.hovered_item_id)
-
-        if dtype == "computer_desk":
-            # Silla + Mesa con doble monitor que se enciende cuando programan
-            self._rect(p, cx - 10, cy + 16, 20, 12, "#1e293b", "#334155", 1)
-            self._rect(p, x, y, w, 32, "#1e293b", "#34d399" if is_active else "#334155", 1)
+        if otype == "computer_desk":
+            # Escritorio 2x1 celdas (64x32) con doble monitor y silla frontal
+            self._rect(p, x + 8, y + h + 2, 18, 10, "#1e293b", "#475569", 1)
+            self._rect(p, x + 2, y + 2, w - 4, h - 4, "#1e293b", "#34d399" if is_active else "#475569", 1)
             for m in range(2):
-                mx, my = x + 8 + m * 34, y + 4
-                self._rect(p, mx, my, 26, 17, "#062116" if is_active else "#0c121d", "#34d399" if is_active else "#263245", 1)
+                mx, my = x + 6 + m * 25, y + 4
+                self._rect(p, mx, my, 22, 15, "#062116" if is_active else "#0c121d", "#34d399" if is_active else "#334155", 1)
                 if is_active:
                     sc = int(now_sec * 8 + m) % 3
                     c = QColor("#34d399" if m == 0 else "#38bdf8")
-                    p.fillRect(mx + 3, my + 4 + sc, 15, 2, c)
-                    p.fillRect(mx + 3, my + 9, 18, 2, c)
-                    p.fillRect(mx + 3, my + 13 - sc, 11, 2, c)
-            self._rect(p, x + 22, y + 24, 26, 5, "#0f172a", "#334155", 1)
-            self._rect(p, x + 66, y + 6, 9, 20, "#0f172a", "#38bdf8" if is_active else "#263245", 1)
+                    p.fillRect(mx + 3, my + 3 + sc, 13, 2, c)
+                    p.fillRect(mx + 3, my + 7, 15, 2, c)
+                    p.fillRect(mx + 3, my + 11 - sc, 10, 2, c)
+            self._rect(p, x + 16, y + 21, 22, 5, "#0f172a", "#475569", 1)
 
-        elif dtype == "bookshelf":
+        elif otype == "laptop_desk":
+            # Escritorio compacto 1x1 (32x32) con laptop abierta
+            self._rect(p, x + 3, y + 4, w - 6, h - 8, "#292524", "#34d399" if is_active else "#57534e", 1)
+            self._rect(p, x + 8, y + 7, 16, 12, "#062116" if is_active else "#0f172a", "#38bdf8" if is_active else "#475569", 1)
+            if is_active:
+                p.fillRect(x + 10, y + 10, 10, 2, QColor("#34d399"))
+                p.fillRect(x + 10, y + 14, 12, 2, QColor("#38bdf8"))
+
+        elif otype in ("bookshelf", "bookshelf_single"):
             books = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#a855f7", "#ec4899"]
-            self._rect(p, x, y, w, h, "#3e2723", "#d49a6a" if is_active else "#6d4c41", 1)
-            for row in range(3):
-                ry = y + 6 + row * 14
-                p.fillRect(x + 4, ry + 10, w - 8, 3, QColor("#2b1b17"))
-                for b in range(8):
-                    p.fillRect(x + 6 + b * 6, ry, 5, 10, QColor(books[(row * 3 + b) % len(books)]))
+            self._rect(p, x + 2, y + 2, w - 4, h - 4, "#3e2723", "#d49a6a" if is_active else "#78350f", 1)
+            num_books = 8 if w >= 60 else 3
+            for row in range(2):
+                ry = y + 5 + row * 12
+                p.fillRect(x + 4, ry + 8, w - 8, 2, QColor("#271612"))
+                for b in range(num_books):
+                    p.fillRect(x + 6 + b * 6, ry, 5, 8, QColor(books[(row * 3 + b) % len(books)]))
 
-        elif dtype == "server_terminal":
-            self._rect(p, x, y, w, h - 14, "#0f131a", "#fb923c" if is_active else "#2d3748", 1)
-            for u in range(3):
-                uy = y + 5 + u * 11
-                p.fillRect(x + 5, uy, w - 10, 8, QColor("#1a202c"))
-                blink = ((int(now_sec * (8 if is_active else 2)) + u) % 2) == 0
-                p.fillRect(x + 8, uy + 2, 4, 4, QColor("#34d399" if blink else "#fb923c"))
-                p.fillRect(x + 15, uy + 2, 4, 4, QColor("#38bdf8"))
-            self._rect(p, x + 4, y + h - 12, w - 8, 12, "#111620", "#fb923c" if is_active else "#334155", 1)
+        elif otype == "server_terminal":
+            self._rect(p, x + 2, y + 2, w - 4, h - 4, "#0f131a", "#fb923c" if is_active else "#334155", 1)
+            for r_idx in range(2):
+                rx = x + 6 + r_idx * 28
+                self._rect(p, rx, y + 5, 24, 22, "#1a202c", "#2d3748", 1)
+                blink = ((int(now_sec * (8 if is_active else 2)) + r_idx) % 2) == 0
+                p.fillRect(rx + 4, y + 9, 4, 4, QColor("#34d399" if blink else "#fb923c"))
+                p.fillRect(rx + 11, y + 9, 4, 4, QColor("#38bdf8"))
+                p.fillRect(rx + 4, y + 17, 14, 3, QColor("#34d399" if is_active else "#475569"))
 
-        elif dtype == "whiteboard":
-            self._rect(p, x, y, w, h, "#0d1726", "#38bdf8" if is_active else "#2a4365", 1)
-            p.fillRect(x + 10, y + 10, 22, 12, QColor("#38bdf8"))
-            p.fillRect(x + 44, y + 10, 22, 12, QColor("#fbbf24"))
-            p.fillRect(x + 78, y + 10, 22, 12, QColor("#34d399"))
+        elif otype == "whiteboard":
+            self._rect(p, x + 2, y + 3, w - 4, h - 6, "#0d1726", "#38bdf8" if is_active else "#2a4365", 1)
+            p.fillRect(x + 10, y + 9, 18, 10, QColor("#38bdf8"))
+            p.fillRect(x + 38, y + 9, 18, 10, QColor("#fbbf24"))
+            p.fillRect(x + 66, y + 9, 18, 10, QColor("#34d399"))
             p.setPen(QPen(QColor("#94a3b8"), 2))
-            p.drawLine(x + 32, y + 16, x + 44, y + 16)
-            p.drawLine(x + 66, y + 16, x + 78, y + 16)
-            p.fillRect(x + 12, y + 28, 8, 8, QColor("#fde047"))
-            p.fillRect(x + 24, y + 28, 8, 8, QColor("#f472b6"))
+            p.drawLine(x + 28, y + 14, x + 38, y + 14)
+            p.drawLine(x + 56, y + 14, x + 66, y + 14)
 
-        elif dtype == "orchestrator_core":
-            self._rect(p, x, y, w, h, "#19130b", "#fbbf24" if is_active else "#5c4620", 1)
-            pulse = 14 + math.sin(now_sec * 3.5) * 2.5
-            p.setPen(QPen(QColor(251, 191, 36, 220 if is_active else 100), 2))
+        elif otype == "orchestrator_core":
+            self._rect(p, x + 4, y + 4, w - 8, h - 8, "#19130b", "#fbbf24" if is_active else "#78350f", 1)
+            pulse = 16 + math.sin(now_sec * 3.5) * 3.0
+            p.setPen(QPen(QColor(251, 191, 36, 220 if is_active else 110), 2))
             p.drawEllipse(QPointF(cx, cy), pulse, pulse)
             p.setPen(QColor("#fcd34d"))
             p.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
             p.drawText(QRectF(x, cy - 7, w, 14), Qt.AlignmentFlag.AlignCenter, "ORCH-HUB")
 
-        elif dtype == "web_radar":
-            self._rect(p, x, y, w, h, "#0a1724", "#22d3ee" if is_active else "#1e3a52", 1)
-            p.setPen(QPen(QColor(34, 211, 238, 220 if is_active else 110), 1))
-            p.drawEllipse(QPointF(cx, cy), 12, 12)
-            p.drawLine(cx - 12, cy, cx + 12, cy)
-            p.drawLine(cx, cy - 12, cx, cy + 12)
+        elif otype == "web_radar":
+            self._rect(p, x + 2, y + 3, w - 4, h - 6, "#0a1724", "#22d3ee" if is_active else "#1e3a52", 1)
+            p.setPen(QPen(QColor(34, 211, 238, 225 if is_active else 110), 1))
+            p.drawEllipse(QPointF(cx, cy), 10, 10)
+            p.drawLine(cx - 10, cy, cx + 10, cy)
+            p.drawLine(cx, cy - 10, cx, cy + 10)
 
-        elif dtype == "art_easel":
-            self._rect(p, x, y, w, h, "#2e1065", "#e879f9" if is_active else "#6b21a8", 1)
-            self._rect(p, x + 8, y + 7, w - 16, h - 14, "#fef3c7", "#d97706", 1)
-            p.fillRect(x + 14, y + 12, 14, 12, QColor("#f43f5e"))
-            p.fillRect(x + 28, y + 16, 16, 12, QColor("#38bdf8"))
+        elif otype == "art_easel":
+            self._rect(p, x + 2, y + 3, w - 4, h - 6, "#2e1065", "#e879f9" if is_active else "#6b21a8", 1)
+            self._rect(p, x + 8, y + 6, w - 16, h - 12, "#fef3c7", "#d97706", 1)
+            p.fillRect(x + 14, y + 9, 14, 10, QColor("#f43f5e"))
+            p.fillRect(x + 30, y + 11, 16, 10, QColor("#38bdf8"))
 
-        elif dtype == "coffee_sofa":
-            self._rect(p, x, y, w, h, "#6b153b", "#f87171" if is_active else "#9d174d", 1)
-            p.fillRect(x + 7, y + 7, w - 14, h - 14, QColor("#831843"))
+        elif otype == "coffee_sofa":
+            self._rect(p, x + 2, y + 4, w - 4, h - 6, "#881337", "#f43f5e" if is_active else "#9f1239", 1)
+            self._rect(p, x + 7, y + 10, w - 14, h - 14, "#be123c")
 
-        if self.edit_mode:
-            p.setPen(QPen(QColor("#38bdf8" if is_hov else "#facc15"), 2 if is_hov else 1, Qt.PenStyle.DotLine))
-            p.drawRect(x - 2, y - 2, w + 4, h + 4)
+        elif otype == "coffee_bar":
+            self._rect(p, x + 2, y + 3, w - 4, h - 6, "#451a03", "#a16207", 1)
+            self._rect(p, x + 8, y + 6, 18, 18, "#991b1b", "#f87171", 1)
+            steam_y = int(y + 1 - ((now_sec * 10) % 6))
+            p.fillRect(x + 15, steam_y, 3, 4, QColor(255, 255, 255, 85))
+            self._rect(p, x + 36, y + 10, 8, 9, "#ffffff", "#38bdf8", 1)
 
-    def _draw_decoration(self, p: QPainter, dec: Dict[str, Any], now_sec: float):
-        dtype = dec.get("type", "plant_monstera")
-        spec = DECORATION_CATALOG.get(dtype, DECORATION_CATALOG["plant_monstera"])
-        cx, cy = int(dec["x"]), int(dec["y"])
-        w, h = spec["w"], spec["h"]
-        x, y = cx - w // 2, cy - h // 2
-        is_hov = self.edit_mode and (dec.get("id") == self.hovered_item_id)
+        elif otype in ("reading_table", "meeting_table"):
+            self._rect(p, x + 3, y + 4, w - 6, h - 8, "#5c3a21", "#854d0e", 1)
+            self._rect(p, x + 12, y + 9, 14, 10, "#fef3c7", "#a16207", 1)
 
-        if dtype in ("plant_monstera", "plant_cactus"):
-            self._rect(p, cx - 7, cy + 4, 14, 10, "#9a3412", "#23110d", 1)
-            leaf_c = "#10b981" if dtype == "plant_monstera" else "#22c55e"
-            self._rect(p, cx - 10, cy - 10, 20, 14, leaf_c, "#064e3b", 1)
+        elif otype == "filing_cabinet":
+            self._rect(p, x + 5, y + 3, w - 10, h - 6, "#334155", "#64748b", 1)
+            p.fillRect(x + 9, y + 9, w - 18, 3, QColor("#94a3b8"))
+            p.fillRect(x + 9, y + 18, w - 18, 3, QColor("#94a3b8"))
+
+        elif otype in ("plant_monstera", "plant_cactus"):
+            self._rect(p, cx - 6, cy + 3, 12, 10, "#9a3412", "#23110d", 1)
+            leaf_c = "#10b981" if otype == "plant_monstera" else "#22c55e"
+            self._rect(p, cx - 10, cy - 11, 20, 15, leaf_c, "#064e3b", 1)
             p.fillRect(cx - 4, cy - 14, 8, 6, QColor("#34d399"))
-        elif dtype == "arcade_machine":
-            self._rect(p, x, y, w, h, "#311042", "#e879f9", 1)
-            self._rect(p, x + 5, y + 7, w - 10, 16, "#090d16", "#38bdf8", 1)
-            p.fillRect(x + 9, y + 12, 6, 6, QColor("#f43f5e"))
-            p.fillRect(x + 17, y + 14, 6, 4, QColor("#facc15"))
-        elif dtype == "water_cooler":
-            self._rect(p, x + 3, cy - 2, w - 6, 20, "#e2e8f0", "#64748b", 1)
-            self._rect(p, x + 4, y + 2, w - 8, 15, "#bae6fd", "#38bdf8", 1)
-        elif dtype == "coffee_bar":
-            self._rect(p, x, y, w, h, "#3b231e", "#78350f", 1)
-            self._rect(p, x + 8, y + 4, 18, 18, "#991b1b", "#f87171", 1)
-            steam_y = int(y - 2 - ((now_sec * 10) % 6))
-            p.fillRect(x + 15, steam_y, 3, 4, QColor(255, 255, 255, 70))
-        elif dtype in ("rug_persian", "rug_cyber"):
-            c1 = "#7f1d1d" if dtype == "rug_persian" else "#0f2942"
-            c2 = "#f59e0b" if dtype == "rug_persian" else "#38bdf8"
-            self._rect(p, x, y, w, h, c1, c2, 1)
-            self._rect(p, x + 6, y + 6, w - 12, h - 12, c1, c2, 1)
-        elif dtype == "floor_lamp":
-            p.fillRect(cx - 1, cy - 8, 3, 22, QColor("#94a3b8"))
-            self._rect(p, cx - 8, cy - 18, 16, 10, "#fef08a", "#ca8a04", 1)
-        elif dtype == "trophy":
+
+        elif otype == "arcade_machine":
+            self._rect(p, x + 4, y + 2, w - 8, h - 4, "#3b0764", "#e879f9", 1)
+            self._rect(p, x + 7, y + 6, w - 14, 12, "#090d16", "#38bdf8", 1)
+            p.fillRect(x + 10, y + 10, 5, 5, QColor("#f43f5e"))
+
+        elif otype == "water_cooler":
+            self._rect(p, x + 7, cy - 2, w - 14, 15, "#e2e8f0", "#64748b", 1)
+            self._rect(p, x + 8, y + 3, w - 16, 13, "#bae6fd", "#38bdf8", 1)
+
+        elif otype in ("rug_persian", "rug_cyber"):
+            c1 = "#7f1d1d" if otype == "rug_persian" else "#0f2942"
+            c2 = "#f59e0b" if otype == "rug_persian" else "#38bdf8"
+            self._rect(p, x + 2, y + 2, w - 4, h - 4, c1, c2, 1)
+            self._rect(p, x + 8, y + 8, w - 16, h - 16, c1, c2, 1)
+
+        elif otype == "floor_lamp":
+            p.fillRect(cx - 1, cy - 4, 3, 16, QColor("#94a3b8"))
+            self._rect(p, cx - 8, cy - 13, 16, 9, "#fef08a", "#ca8a04", 1)
+
+        elif otype == "trophy":
             self._rect(p, cx - 6, cy + 4, 12, 8, "#451a03", "#23110d", 1)
             self._rect(p, cx - 7, cy - 10, 14, 14, "#facc15", "#ca8a04", 1)
 
-        if self.edit_mode:
-            p.setPen(QPen(QColor("#38bdf8" if is_hov else "#a855f7"), 2 if is_hov else 1, Qt.PenStyle.DotLine))
-            p.drawRect(x - 2, y - 2, w + 4, h + 4)
+    def _draw_grid_editor_overlay(self, p: QPainter):
+        """Dibuja las líneas de la cuadrícula 32x19 y la previsualización verde/roja por celda."""
+        p.setPen(QPen(QColor(148, 163, 184, 38), 1))
+        for c in range(GRID_COLS + 1):
+            p.drawLine(c * TILE_SIZE, 0, c * TILE_SIZE, WORLD_H)
+        for r in range(GRID_ROWS + 1):
+            p.drawLine(0, r * TILE_SIZE, WORLD_W, r * TILE_SIZE)
+
+        if not (0 <= self.hover_col < GRID_COLS and 0 <= self.hover_row < GRID_ROWS) or not self.builder_dock:
+            return
+
+        tmode = self.builder_dock.tool_mode
+        hc, hr = self.hover_col, self.hover_row
+
+        if tmode in ("place_object", "move"):
+            otype = self.moving_item_type if (tmode == "move" and self.moving_item_type) else self.builder_dock.selected_object_type
+            spec = OBJECT_CATALOG.get(otype)
+            if spec:
+                tw, th = int(spec["tile_w"]), int(spec["tile_h"])
+                valid = self.manager.can_place_object(otype, hc, hr, ignore_item_id=self.moving_item_id)
+                fill_c = QColor(52, 211, 153, 75) if valid else QColor(248, 113, 113, 85)
+                border_c = QColor("#34d399" if valid else "#f87171")
+                p.fillRect(hc * TILE_SIZE, hr * TILE_SIZE, tw * TILE_SIZE, th * TILE_SIZE, fill_c)
+                p.setPen(QPen(border_c, 2))
+                p.drawRect(hc * TILE_SIZE, hr * TILE_SIZE, tw * TILE_SIZE, th * TILE_SIZE)
+        else:
+            # Celda 1x1 resaltada para Pisos, Paredes o Borrador
+            p.fillRect(hc * TILE_SIZE, hr * TILE_SIZE, TILE_SIZE, TILE_SIZE, QColor(56, 189, 248, 65))
+            p.setPen(QPen(QColor("#38bdf8"), 2))
+            p.drawRect(hc * TILE_SIZE, hr * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+
+        # Indicador de coordenada de cuadrícula en la esquina superior izquierda
+        self._round_pill(p, 10, 10, 145, 22, 6, QColor(15, 23, 42, 230), QColor("#38bdf8"))
+        p.setPen(QColor("#38bdf8"))
+        p.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
+        p.drawText(QRectF(10, 10, 145, 22), Qt.AlignmentFlag.AlignCenter, f"Cuadrícula [{hc}, {hr}]")
 
     def _draw_orchestrator_links(self, p: QPainter, now_sec: float, visible: List[QtAgentEntity]):
         vis_ids = {e.id for e in visible}
@@ -796,10 +784,10 @@ class PixelOfficeWidget(QWidget):
             if ent.parent_id and ent.parent_id in vis_ids:
                 parent = self.entities[ent.parent_id]
                 p.setPen(QPen(QColor(251, 191, 36, 130), 2, Qt.PenStyle.DashLine))
-                p.drawLine(int(parent.x), int(parent.y - 8), int(ent.x), int(ent.y - 8))
+                p.drawLine(int(parent.x), int(parent.y - 10), int(ent.x), int(ent.y - 10))
                 t = (now_sec * 0.85) % 1.0
                 px = parent.x + (ent.x - parent.x) * t
-                py = (parent.y - 8) + ((ent.y - 8) - (parent.y - 8)) * t
+                py = (parent.y - 10) + ((ent.y - 10) - (parent.y - 10)) * t
                 p.fillRect(int(px - 2.5), int(py - 2.5), 5, 5, QColor("#38bdf8"))
 
     def _draw_agent_body(self, p: QPainter, ent: QtAgentEntity, now_sec: float):
@@ -811,18 +799,16 @@ class PixelOfficeWidget(QWidget):
         if ent.spawn_timer > 0:
             p.setPen(QPen(QColor("#38bdf8"), 2))
             r = 22 * ent.spawn_timer
-            p.drawEllipse(QPointF(x, y - 8), r, r)
+            p.drawEllipse(QPointF(x, y - 10), r, r)
 
         if is_sel or is_hov:
             p.setPen(QPen(QColor("#38bdf8" if is_sel else "#cbd5e1"), 2 if is_sel else 1))
-            p.drawEllipse(QPointF(x, y + 14), 16, 6)
+            p.drawEllipse(QPointF(x, y + 12), 16, 6)
 
-        # Sombra en el piso
         p.setBrush(QColor(0, 0, 0, 115))
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QRectF(x - 12, y + 10, 24, 7))
+        p.drawEllipse(QRectF(x - 13, y + 8, 26, 7))
 
-        # Renderizar el Sprite Chibi personalizado en la dirección actual (down, up, left, right)
         is_typing = (not ent.is_walking) and (ent.current_station in ("coding_desk", "server_lab"))
         pix = SPRITE_ENGINE.get_pixmap(
             ent.character,
@@ -831,7 +817,7 @@ class PixelOfficeWidget(QWidget):
             scale=2,
             is_typing=is_typing,
         )
-        p.drawPixmap(int(x - pix.width() / 2), int(y - pix.height() + 15 + walk_bob), pix)
+        p.drawPixmap(int(x - pix.width() / 2), int(y - pix.height() + 14 + walk_bob), pix)
 
     def _draw_agent_overlay(self, p: QPainter, ent: QtAgentEntity, now_sec: float, force_full: bool):
         x, y = int(ent.x), int(ent.y)
@@ -841,7 +827,6 @@ class PixelOfficeWidget(QWidget):
         walk_bob = (-2 if ent.walk_frame % 2 == 1 else 0) if ent.is_walking else int(math.sin(now_sec * 3.5 + x))
         py = y + walk_bob
 
-        # Nombre del personaje + modelo compacto debajo de los pies
         char_name = ent.character.get("name", "Agente")
         label = f"⚡ {char_name}" if ent.is_subagent else f"{char_name} · {ent.compact_name}"
         if len(label) > 16:
@@ -851,22 +836,22 @@ class PixelOfficeWidget(QWidget):
         p.setFont(font_name)
         nw = QFontMetrics(font_name).horizontalAdvance(label) + 10
         self._round_pill(
-            p, x - nw / 2, y + 16, nw, 14, 4,
+            p, x - nw / 2, y + 15, nw, 14, 4,
             QColor(15, 23, 42, 240 if is_sel else 205),
             QColor("#38bdf8") if is_sel else QColor(148, 163, 184, 65),
         )
         p.setPen(QColor("#ffffff" if is_sel else "#cbd5e1"))
-        p.drawText(QRectF(x - nw / 2, y + 16, nw, 14), Qt.AlignmentFlag.AlignCenter, label)
+        p.drawText(QRectF(x - nw / 2, y + 15, nw, 14), Qt.AlignmentFlag.AlignCenter, label)
 
-        # Globo de actividad o de colaboración (Pair-Programming)
         if is_idle_lounge and not force_full:
-            self._round_pill(p, x - 10, py - 46, 20, 15, 7, QColor(15, 23, 42, 210), QColor(248, 113, 113, 90))
+            self._round_pill(p, x - 10, py - 54, 20, 15, 7, QColor(15, 23, 42, 210), QColor(248, 113, 113, 90))
             p.setPen(QColor("#fca5a5"))
             p.setFont(QFont("Segoe UI", 8))
-            p.drawText(QRectF(x - 10, py - 46, 20, 15), Qt.AlignmentFlag.AlignCenter, "☕")
+            p.drawText(QRectF(x - 10, py - 54, 20, 15), Qt.AlignmentFlag.AlignCenter, "☕")
         else:
+            st_title = STATION_LABELS.get(ent.current_station, ("📍", ent.current_station))[1]
             if ent.is_walking:
-                bubble = f"→ {STATIONS[ent.current_station]['title']}"
+                bubble = f"→ {st_title}"
             elif ent.is_collaborating and ent.current_station != "lounge":
                 if ent.role == "collaborator":
                     bubble = f"🤝 Revisando con {ent.partner_name or 'compañero'}"
@@ -882,7 +867,7 @@ class PixelOfficeWidget(QWidget):
                 p.setFont(font_b)
                 bw = QFontMetrics(font_b).horizontalAdvance(bubble) + 14
                 bx = max(10.0, min(WORLD_W - bw - 10.0, x - bw / 2))
-                by = py - 50
+                by = py - 58
                 border_c = QColor("#fbbf24") if (ent.is_collaborating and ent.current_station != "lounge") else (
                     QColor("#38bdf8") if (is_sel or is_hov) else QColor(148, 163, 184, 90)
                 )
@@ -998,21 +983,24 @@ QListWidget::item:selected {
     border: 1px solid rgba(56, 189, 248, 110);
     color: #ffffff;
 }
-QScrollBar:vertical {
+QScrollBar:vertical, QScrollBar:horizontal {
     background: transparent;
     width: 6px;
+    height: 6px;
     margin: 2px;
 }
-QScrollBar::handle:vertical {
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
     background: #24324d;
     border-radius: 3px;
     min-height: 24px;
+    min-width: 24px;
 }
-QScrollBar::handle:vertical:hover {
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
     background: #354a73;
 }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+QScrollBar::add-line, QScrollBar::sub-line {
     height: 0px;
+    width: 0px;
 }
 """
 
@@ -1021,8 +1009,8 @@ class PixelAgentsWindow(QMainWindow):
     def __init__(self, brain_dir: Optional[str] = None):
         super().__init__()
         self.setWindowTitle("Pixelavity // Antigravity Live Visualizer")
-        self.resize(1360, 820)
-        self.setMinimumSize(1040, 650)
+        self.resize(1380, 840)
+        self.setMinimumSize(1060, 660)
         self.setStyleSheet(CLEAN_STYLESHEET)
 
         icon_path = os.path.join(BASE_DIR, "assets", "icon.ico")
@@ -1061,7 +1049,7 @@ class PixelAgentsWindow(QMainWindow):
         brand_col.setSpacing(1)
         title_lbl = QLabel("👾 PIXELAVITY  ·  ANTIGRAVITY")
         title_lbl.setObjectName("BrandTitle")
-        sub_lbl = QLabel("MediaHub Conglomerate · Visualizador Personalizable en Tiempo Real")
+        sub_lbl = QLabel("MediaHub Conglomerate · Oficina en Cuadrícula 32x19 & Sprites Detallados")
         sub_lbl.setObjectName("BrandSub")
         brand_col.addWidget(title_lbl)
         brand_col.addWidget(sub_lbl)
@@ -1077,16 +1065,14 @@ class PixelAgentsWindow(QMainWindow):
         self.lbl_stats.setObjectName("StatsPill")
         top_layout.addWidget(self.lbl_stats)
 
-        # Botón para abrir el Creador de Personajes (4 direcciones)
         self.btn_chars = QPushButton("👤 Personajes")
-        self.btn_chars.setToolTip("Crear y personalizar personajes (pelo, cara, ropa, zapatos, accesorios)")
+        self.btn_chars.setToolTip("Crear y personalizar personajes (12 peinados, cara, ropa, zapatos, accesorios)")
         self.btn_chars.clicked.connect(self._open_character_creator)
         top_layout.addWidget(self.btn_chars)
 
-        # Botón para activar/desactivar el Editor de Background / Oficina
-        self.btn_edit_office = QPushButton("🏗️ Personalizar Oficina")
+        self.btn_edit_office = QPushButton("🏗️ Constructor de Oficina")
         self.btn_edit_office.setCheckable(True)
-        self.btn_edit_office.setToolTip("Modificar pisos, paredes, muebles, computadores y decoración")
+        self.btn_edit_office.setToolTip("Abrir menú por categorías (Dispositivos, Muebles, Decoración, Pisos 1x1/Rellenar, Paredes)")
         self.btn_edit_office.toggled.connect(self._toggle_office_editor)
         top_layout.addWidget(self.btn_edit_office)
 
@@ -1097,26 +1083,25 @@ class PixelAgentsWindow(QMainWindow):
 
         self.btn_pin = QPushButton("📌 Fijar Encima")
         self.btn_pin.setCheckable(True)
-        self.btn_pin.setToolTip("Mantiene Pixelavity flotando encima de Antigravity / VS Code")
         self.btn_pin.toggled.connect(self._toggle_always_on_top)
         top_layout.addWidget(self.btn_pin)
 
         main_layout.addWidget(topbar)
 
-        # 2. BARRA DESPLEGABLE DE EDICIÓN DE OFICINA (Oculta por defecto en Modo Espectador)
+        # 2. MENÚ CONSTRUCTOR POR CATEGORÍAS Y CUADRÍCULAS (Oculto por defecto)
         self.office_widget = PixelOfficeWidget(
             manager=self.customization,
             on_select_agent=self._on_agent_selected,
         )
-        self.editor_bar = OfficeEditorBar(
+        self.builder_dock = OfficeBuilderDock(
             manager=self.customization,
-            on_layout_changed=self._on_office_layout_changed,
+            on_state_changed=self._on_office_layout_changed,
         )
-        self.editor_bar.setVisible(False)
-        self.office_widget.editor_bar = self.editor_bar
-        main_layout.addWidget(self.editor_bar)
+        self.builder_dock.setVisible(False)
+        self.office_widget.builder_dock = self.builder_dock
+        main_layout.addWidget(self.builder_dock)
 
-        # 3. CUERPO PRINCIPAL (MAPA + PANEL LATERAL)
+        # 3. CUERPO PRINCIPAL
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(10)
         main_layout.addWidget(splitter, stretch=1)
@@ -1174,7 +1159,7 @@ class PixelAgentsWindow(QMainWindow):
         self._refresh_sidebar()
 
     def _toggle_office_editor(self, checked: bool):
-        self.editor_bar.setVisible(checked)
+        self.builder_dock.setVisible(checked)
         self.office_widget.edit_mode = checked
         self.office_widget.update()
 
@@ -1255,8 +1240,7 @@ class PixelAgentsWindow(QMainWindow):
 
         sel = self.office_widget.entities.get(self.office_widget.selected_agent_id or "")
         if sel:
-            st = STATIONS.get(sel.current_station, {})
-            st_label = f"{st.get('icon', '')} {st.get('title', sel.current_station)}"
+            st_icon, st_title = STATION_LABELS.get(sel.current_station, ("📍", sel.current_station))
             role = f"SUB · {sel.subagent_type.upper()}" if sel.is_subagent else "PRINCIPAL"
             char_name = sel.character.get("name", "Personaje")
             collab_txt = ""
@@ -1269,7 +1253,7 @@ class PixelAgentsWindow(QMainWindow):
                 f"<span style='color:#94a3b8'>({sel.name})</span> "
                 f"<span style='color:#38bdf8;font-size:10px'>[{role}]</span><br>"
                 f"<span style='color:#fbbf24'>{sel.model}</span><br><br>"
-                f"<b>Sala:</b> {st_label}<br>"
+                f"<b>Estación:</b> {st_icon} {st_title} <span style='color:#64748b'>[{sel.target_col}, {sel.target_row}]</span><br>"
                 f"<b>Estado:</b> {sel.badge}"
                 f"{collab_txt}<br>"
                 f"<span style='color:#6e7f9c;font-size:11px'>{sel.chat_title}</span>"
