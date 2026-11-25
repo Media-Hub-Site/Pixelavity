@@ -67,6 +67,20 @@ STATION_LABELS: Dict[str, Tuple[str, str]] = {
     "lounge":           ("☕", "CAFETERÍA & LOUNGE"),
 }
 
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"
+    "\U00002600-\U000027BF"
+    "\U0000FE00-\U0000FE0F"
+    "\U0000200D"
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def strip_emojis(text: str) -> str:
+    return _EMOJI_RE.sub("", str(text or "")).strip()
+
 
 # =============================================================================
 # ENTIDAD DE AGENTE CON PATHFINDING POR CUADRÍCULA Y 4 DIRECCIONES
@@ -270,20 +284,20 @@ class QtAgentEntity:
 
     def _emit_particle(self, particles: List[Dict[str, Any]]):
         if self.is_collaborating and self.current_station != "lounge":
-            syms = ["💬", "💡", "👀", "</>", "🤝"]
+            syms = ["...", "?!", "</>", "+1", "OK"]
             color = "#fbbf24" if self.role == "collaborator" else "#38bdf8"
         else:
             table = {
                 "coding_desk":      (["</>", "{ }", "01"], "#34d399"),
-                "library":          (["📖", "doc", "🔍"], "#fbbf24"),
-                "server_lab":       (["⚡", "$>", "OK"], "#fb923c"),
-                "strategy_board":   (["💭", "💡"], "#38bdf8"),
-                "orchestrator_hub": (["📡", "⚡"], "#fbbf24"),
-                "web_station":      (["🌐", "200"], "#22d3ee"),
-                "art_studio":       (["✨", "UI"], "#e879f9"),
-                "lounge":           (["~"], "#94a3b8"),
+                "library":          (["doc", "lib", "pkg"], "#fbbf24"),
+                "server_lab":       (["$>", "OK", "run"], "#fb923c"),
+                "strategy_board":   (["...", "?", "!"], "#38bdf8"),
+                "orchestrator_hub": (["SYNC", "HUB"], "#fbbf24"),
+                "web_station":      (["GET", "200"], "#22d3ee"),
+                "art_studio":       (["CSS", "UI"], "#e879f9"),
+                "lounge":           (["~", "zZ"], "#94a3b8"),
             }
-            syms, color = table.get(self.current_station, (["✨"], "#38bdf8"))
+            syms, color = table.get(self.current_station, (["."], "#38bdf8"))
 
         particles.append({
             "x": self.x + random.uniform(-8, 8),
@@ -828,7 +842,7 @@ class PixelOfficeWidget(QWidget):
         py = y + walk_bob
 
         char_name = ent.character.get("name", "Agente")
-        label = f"⚡ {char_name}" if ent.is_subagent else f"{char_name} · {ent.compact_name}"
+        label = f"[SUB] {char_name}" if ent.is_subagent else f"{char_name} · {ent.compact_name}"
         if len(label) > 16:
             label = label[:15] + "…"
 
@@ -844,21 +858,22 @@ class PixelOfficeWidget(QWidget):
         p.drawText(QRectF(x - nw / 2, y + 15, nw, 14), Qt.AlignmentFlag.AlignCenter, label)
 
         if is_idle_lounge and not force_full:
-            self._round_pill(p, x - 10, py - 54, 20, 15, 7, QColor(15, 23, 42, 210), QColor(248, 113, 113, 90))
+            self._round_pill(p, x - 11, py - 54, 22, 15, 7, QColor(15, 23, 42, 210), QColor(248, 113, 113, 90))
             p.setPen(QColor("#fca5a5"))
-            p.setFont(QFont("Segoe UI", 8))
-            p.drawText(QRectF(x - 10, py - 54, 20, 15), Qt.AlignmentFlag.AlignCenter, "☕")
+            p.setFont(QFont("Consolas", 7, QFont.Weight.Bold))
+            p.drawText(QRectF(x - 11, py - 54, 22, 15), Qt.AlignmentFlag.AlignCenter, "zZ")
         else:
-            st_title = STATION_LABELS.get(ent.current_station, ("📍", ent.current_station))[1]
+            st_title = STATION_LABELS.get(ent.current_station, ("", ent.current_station))[1]
+            clean_badge = strip_emojis(ent.badge)
             if ent.is_walking:
-                bubble = f"→ {st_title}"
+                bubble = f"-> {st_title}"
             elif ent.is_collaborating and ent.current_station != "lounge":
                 if ent.role == "collaborator":
-                    bubble = f"🤝 Revisando con {ent.partner_name or 'compañero'}"
+                    bubble = f"Revisando con {ent.partner_name or 'compañero'}"
                 else:
-                    bubble = f"{ent.badge[:18]} + {ent.partner_name or 'equipo'}"
+                    bubble = f"{clean_badge[:18]} + {ent.partner_name or 'equipo'}"
             else:
-                bubble = ent.badge
+                bubble = clean_badge
 
             if bubble:
                 if len(bubble) > 27:
@@ -1047,9 +1062,9 @@ class PixelAgentsWindow(QMainWindow):
 
         brand_col = QVBoxLayout()
         brand_col.setSpacing(1)
-        title_lbl = QLabel("👾 PIXELAVITY  ·  ANTIGRAVITY")
+        title_lbl = QLabel("PIXELAVITY  ·  ANTIGRAVITY")
         title_lbl.setObjectName("BrandTitle")
-        sub_lbl = QLabel("MediaHub Conglomerate · Oficina en Cuadrícula 32x19 & Sprites Detallados")
+        sub_lbl = QLabel("MediaHub Conglomerate · Oficina en Cuadrícula 32x19")
         sub_lbl.setObjectName("BrandSub")
         brand_col.addWidget(title_lbl)
         brand_col.addWidget(sub_lbl)
@@ -1065,14 +1080,14 @@ class PixelAgentsWindow(QMainWindow):
         self.lbl_stats.setObjectName("StatsPill")
         top_layout.addWidget(self.lbl_stats)
 
-        self.btn_chars = QPushButton("👤 Personajes")
-        self.btn_chars.setToolTip("Crear y personalizar personajes (12 peinados, cara, ropa, zapatos, accesorios)")
+        self.btn_chars = QPushButton("Personajes")
+        self.btn_chars.setToolTip("Crear y personalizar personajes (peinados, cara, ropa, zapatos, accesorios)")
         self.btn_chars.clicked.connect(self._open_character_creator)
         top_layout.addWidget(self.btn_chars)
 
-        self.btn_edit_office = QPushButton("🏗️ Constructor de Oficina")
+        self.btn_edit_office = QPushButton("Constructor de Oficina")
         self.btn_edit_office.setCheckable(True)
-        self.btn_edit_office.setToolTip("Abrir menú por categorías (Dispositivos, Muebles, Decoración, Pisos 1x1/Rellenar, Paredes)")
+        self.btn_edit_office.setToolTip("Abrir menú por categorías (Dispositivos, Muebles, Decoración, Pisos, Paredes)")
         self.btn_edit_office.toggled.connect(self._toggle_office_editor)
         top_layout.addWidget(self.btn_edit_office)
 
@@ -1081,7 +1096,7 @@ class PixelAgentsWindow(QMainWindow):
         self.btn_filter_live.toggled.connect(self._toggle_filter_live)
         top_layout.addWidget(self.btn_filter_live)
 
-        self.btn_pin = QPushButton("📌 Fijar Encima")
+        self.btn_pin = QPushButton("Fijar Encima")
         self.btn_pin.setCheckable(True)
         self.btn_pin.toggled.connect(self._toggle_always_on_top)
         top_layout.addWidget(self.btn_pin)
@@ -1265,11 +1280,11 @@ class PixelAgentsWindow(QMainWindow):
 
         self.list_agents.clear()
         for e in visible:
-            prefix = "↳ " if e.is_subagent else ""
+            prefix = "> " if e.is_subagent else ""
             char_name = e.character.get("name", "Agente")
-            collab_tag = f" [🤝 con {e.partner_name}]" if (e.is_collaborating and e.current_station != "lounge") else ""
+            collab_tag = f" [con {e.partner_name}]" if (e.is_collaborating and e.current_station != "lounge") else ""
             pix = SPRITE_ENGINE.get_pixmap(e.character, direction="down", walk_frame=0, scale=2)
-            item = QListWidgetItem(QIcon(pix), f"{prefix}{char_name} ({e.compact_name}){collab_tag}\n{e.badge}")
+            item = QListWidgetItem(QIcon(pix), f"{prefix}{char_name} ({e.compact_name}){collab_tag}\n{strip_emojis(e.badge)}")
             item.setData(Qt.ItemDataRole.UserRole, e.id)
             self.list_agents.addItem(item)
             if e.id == self.office_widget.selected_agent_id:
@@ -1277,7 +1292,7 @@ class PixelAgentsWindow(QMainWindow):
 
         self.list_feed.clear()
         for log in self._recent_logs[:12]:
-            txt = f"{log.get('time_str', '')} · {log.get('agent_name', '')}\n{log.get('badge', '')}"
+            txt = f"{log.get('time_str', '')} · {log.get('agent_name', '')}\n{strip_emojis(log.get('badge', ''))}"
             self.list_feed.addItem(txt)
 
     def closeEvent(self, event):

@@ -475,14 +475,14 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
 
 # Reglas mínimas por estación de actividad para que los agentes siempre tengan dónde interactuar
 REQUIRED_STATIONS: Dict[str, str] = {
-    "coding_desk":      "💻 Computador (PC o Laptop)",
-    "library":          "📚 Mueble de Libros / Estantería",
-    "server_lab":       "⚡ Servidor / Terminal",
-    "strategy_board":   "💭 Pizarra Estrategia",
-    "orchestrator_hub": "🎛️ Núcleo Orchestrator",
-    "web_station":      "🌐 Cabina Web / Radar",
-    "art_studio":       "🎨 Mesa Estudio UI",
-    "lounge":           "☕ Sofá o Barra de Cafetería",
+    "coding_desk":      "Computador (PC o Laptop)",
+    "library":          "Mueble de Libros / Estantería",
+    "server_lab":       "Servidor / Terminal",
+    "strategy_board":   "Pizarra Estrategia",
+    "orchestrator_hub": "Núcleo Orchestrator",
+    "web_station":      "Cabina Web / Radar",
+    "art_studio":       "Mesa Estudio UI",
+    "lounge":           "Sofá o Barra de Cafetería",
 }
 
 
@@ -888,7 +888,7 @@ class CustomizationManager:
             if station_counts.get(req_station, 0) < 1:
                 return (
                     False,
-                    f"⚠️ Regla de la oficina: Debe existir como mínimo 1 {label} en la cuadrícula "
+                    f"Regla de la oficina: Debe existir como mínimo 1 {label} en la cuadrícula "
                     f"para que los agentes puedan trabajar.",
                 )
         return True, "OK"

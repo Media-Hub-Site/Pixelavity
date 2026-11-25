@@ -270,7 +270,7 @@ class CharacterCreatorDialog(QDialog):
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(8)
 
-        lbl_pool = QLabel("👥 TUS PERSONAJES")
+        lbl_pool = QLabel("TUS PERSONAJES")
         lbl_pool.setObjectName("SectionTitle")
         left_layout.addWidget(lbl_pool)
 
@@ -279,21 +279,21 @@ class CharacterCreatorDialog(QDialog):
         self.list_chars.currentRowChanged.connect(self._on_row_selected)
         left_layout.addWidget(self.list_chars, stretch=1)
 
-        btn_new = QPushButton("➕ Crear Nuevo Personaje")
+        btn_new = QPushButton("+ Crear Nuevo Personaje")
         btn_new.setObjectName("PrimaryBtn")
         btn_new.clicked.connect(self._create_new_character)
         left_layout.addWidget(btn_new)
 
-        btn_rand = QPushButton("🎲 Aspecto Aleatorio")
+        btn_rand = QPushButton("Aspecto Aleatorio")
         btn_rand.clicked.connect(self._randomize_current)
         left_layout.addWidget(btn_rand)
 
-        btn_del = QPushButton("🗑️ Eliminar Personaje")
+        btn_del = QPushButton("Eliminar Personaje")
         btn_del.setObjectName("DangerBtn")
         btn_del.clicked.connect(self._delete_current)
         left_layout.addWidget(btn_del)
 
-        btn_reset = QPushButton("↺ Restaurar 3 por Defecto")
+        btn_reset = QPushButton("Restaurar 3 por Defecto")
         btn_reset.clicked.connect(self._reset_defaults)
         left_layout.addWidget(btn_reset)
 
@@ -322,7 +322,7 @@ class CharacterCreatorDialog(QDialog):
         center_layout.addWidget(self.preview_widget, stretch=1)
 
         hint_lbl = QLabel(
-            "💡 Selecciona una sección a la derecha (Peinado, Cara, Ropa, Zapatos o Accesorio) "
+            "Selecciona una sección a la derecha (Peinado, Cara, Ropa, Zapatos o Accesorio) "
             "y haz clic sobre cualquier cuadrado visual para aplicar ese diseño al instante."
         )
         hint_lbl.setWordWrap(True)
@@ -339,7 +339,7 @@ class CharacterCreatorDialog(QDialog):
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(10)
 
-        lbl_sec = QLabel("🎨 SECCIONES DE DISEÑO")
+        lbl_sec = QLabel("SECCIONES DE DISEÑO")
         lbl_sec.setObjectName("SectionTitle")
         right_layout.addWidget(lbl_sec)
 
@@ -350,11 +350,11 @@ class CharacterCreatorDialog(QDialog):
         self.sec_group.setExclusive(True)
 
         sections = [
-            (0, "💇 Peinado"),
-            (1, "🙂 Cara"),
-            (2, "👕 Ropa"),
-            (3, "👟 Zapatos"),
-            (4, "🎩 Accesorio"),
+            (0, "Peinado"),
+            (1, "Cara"),
+            (2, "Ropa"),
+            (3, "Zapatos"),
+            (4, "Accesorio"),
         ]
         for idx, title in sections:
             b = QPushButton(title)
@@ -376,7 +376,7 @@ class CharacterCreatorDialog(QDialog):
         self.stack.addWidget(self._build_accessory_page())
         right_layout.addWidget(self.stack, stretch=1)
 
-        btn_close = QPushButton("✓ Guardar y Volver a la Oficina")
+        btn_close = QPushButton("Guardar y Volver a la Oficina")
         btn_close.setObjectName("PrimaryBtn")
         btn_close.setMinimumHeight(38)
         btn_close.clicked.connect(self.accept)
@@ -446,7 +446,7 @@ class CharacterCreatorDialog(QDialog):
             sw.clicked.connect(lambda checked=False, k=color_key, c=hx: self._set_color(k, c))
             row.addWidget(sw)
 
-        btn_custom = QPushButton("🎨")
+        btn_custom = QPushButton("+")
         btn_custom.setFixedSize(32, 28)
         btn_custom.setToolTip("Elegir color personalizado...")
         btn_custom.clicked.connect(lambda checked=False, k=color_key: self._pick_custom_color(k))
@@ -789,11 +789,11 @@ class OfficeBuilderDock(QFrame):
         self.cat_group.setExclusive(True)
 
         categories = [
-            ("devices",     "💻 Dispositivos"),
-            ("furniture",   "🪑 Muebles"),
-            ("decorations", "🪴 Decoración"),
-            ("floors",      "🎨 Pisos"),
-            ("walls",       "🧱 Paredes"),
+            ("devices",     "Dispositivos"),
+            ("furniture",   "Muebles"),
+            ("decorations", "Decoración"),
+            ("floors",      "Pisos"),
+            ("walls",       "Paredes"),
         ]
         for cid, clabel in categories:
             btn = QPushButton(clabel)
@@ -807,14 +807,14 @@ class OfficeBuilderDock(QFrame):
 
         top_row.addSpacing(10)
 
-        self.btn_floor_1x1 = QPushButton("🖌️ Piso 1x1 (Uno por uno)")
+        self.btn_floor_1x1 = QPushButton("Piso 1x1 (Uno por uno)")
         self.btn_floor_1x1.setObjectName("ToolBtn")
         self.btn_floor_1x1.setCheckable(True)
         self.btn_floor_1x1.setChecked(True)
         self.btn_floor_1x1.clicked.connect(lambda: self._set_floor_submode("floor_1x1"))
         top_row.addWidget(self.btn_floor_1x1)
 
-        self.btn_floor_fill = QPushButton("🪣 Piso Rellenar")
+        self.btn_floor_fill = QPushButton("Piso Rellenar")
         self.btn_floor_fill.setObjectName("ToolBtn")
         self.btn_floor_fill.setCheckable(True)
         self.btn_floor_fill.clicked.connect(lambda: self._set_floor_submode("floor_fill"))
@@ -828,21 +828,21 @@ class OfficeBuilderDock(QFrame):
 
         top_row.addSpacing(8)
 
-        self.btn_tool_move = QPushButton("🖐️ Mover")
+        self.btn_tool_move = QPushButton("Mover")
         self.btn_tool_move.setObjectName("ToolBtn")
         self.btn_tool_move.setCheckable(True)
         self.btn_tool_move.setToolTip("Mover cualquier objeto existente de una cuadrícula a otra")
         self.btn_tool_move.clicked.connect(lambda: self._set_explicit_tool("move"))
         top_row.addWidget(self.btn_tool_move)
 
-        self.btn_tool_del = QPushButton("🗑️ Borrar")
+        self.btn_tool_del = QPushButton("Borrar")
         self.btn_tool_del.setObjectName("ToolBtn")
         self.btn_tool_del.setCheckable(True)
         self.btn_tool_del.setToolTip("Eliminar objeto o pared de la cuadrícula clicada")
         self.btn_tool_del.clicked.connect(lambda: self._set_explicit_tool("delete"))
         top_row.addWidget(self.btn_tool_del)
 
-        btn_reset = QPushButton("↺ Restaurar")
+        btn_reset = QPushButton("Restaurar")
         btn_reset.setObjectName("ToolBtn")
         btn_reset.setToolTip("Restaurar el mapa de la oficina por defecto")
         btn_reset.clicked.connect(self._reset_map)
@@ -906,7 +906,7 @@ class OfficeBuilderDock(QFrame):
         self.tool_mode = tmode
         for b in self._item_buttons.values():
             b.setChecked(False)
-        self.lbl_selected_info.setText("🖐️ Mover en Cuadrícula" if tmode == "move" else "🗑️ Borrar de Cuadrícula")
+        self.lbl_selected_info.setText("Mover en Cuadrícula" if tmode == "move" else "Borrar de Cuadrícula")
         self._sync_tool_buttons()
         self.on_state_changed()
 
