@@ -1233,6 +1233,8 @@ class PixelAgentsWindow(QMainWindow):
         self._refresh_sidebar()
 
     def _refresh_sidebar(self):
+        if not hasattr(self, "lbl_inspector") or not hasattr(self, "list_agents"):
+            return
         visible = self.office_widget._visible_entities()
         chats = sum(1 for e in visible if not e.is_subagent)
         subs = sum(1 for e in visible if e.is_subagent)
