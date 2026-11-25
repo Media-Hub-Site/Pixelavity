@@ -1,0 +1,84 @@
+name: Build and Release Pixelavity
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows Executable
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build Executable with PyInstaller Spec
+        run: python -m PyInstaller Pixelavity.spec --noconfirm
+
+      - name: Compress Build to ZIP
+        run: |
+          Compress-Archive -Path "dist\Pixelavity\*" -DestinationPath "Pixelavity.zip" -Force
+
+      - name: Generate Release Tag Name
+        id: tag_name
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "release") {
+            $raw_tag = "${{ github.event.release.tag_name }}"
+          } elseif ("${{ github.ref }}" -match "refs/tags/") {
+            $raw_tag = "${{ github.ref_name }}"
+          } else {
+            $date = Get-Date -Format "yyyyMMdd-HHmm"
+            $raw_tag = "v1.0.0-$date"
+          }
+          $clean_ver = $raw_tag.TrimStart('v')
+          echo "TAG=$raw_tag" >> $env:GITHUB_OUTPUT
+          echo "CLEAN_VERSION=$clean_ver" >> $env:GITHUB_OUTPUT
+
+      - name: Update Inno Setup AppVersion
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.tag_name.outputs.CLEAN_VERSION }}"
+          $issPath = (Resolve-Path "installer.iss").Path
+          $content = [System.IO.File]::ReadAllText($issPath) -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$ver`""
+          [System.IO.File]::WriteAllText($issPath, $content, (New-Object System.Text.UTF8Encoding $true))
+          Write-Host "Updated installer.iss AppVersion to $ver"
+
+      - name: Build Installer with Inno Setup
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: installer.iss
+
+      - name: Publish Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag_name.outputs.TAG }}
+          name: "Pixelavity ${{ steps.tag_name.outputs.TAG }}"
+          files: |
+            Pixelavity.zip
+            Output/Pixelavity-Setup.exe
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,6 +3,9 @@ __pycache__/
 *$py.class
 build/
 dist/
+Output/
 venv/
 .env
 *.log
+*.zip
+*.exe

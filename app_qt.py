@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Any
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF
 from PyQt6.QtGui import (
-    QPainter, QColor, QPen, QFont, QFontMetrics
+    QPainter, QColor, QPen, QFont, QFontMetrics, QIcon
 )
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -24,7 +24,11 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QSplitter
 )
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(sys.executable)))
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
@@ -900,14 +904,18 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 
 
 class PixelAgentsWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, brain_dir: Optional[str] = None):
         super().__init__()
-        self.setWindowTitle("PixelAgents // Antigravity")
+        self.setWindowTitle("Pixelavity // Antigravity Live Visualizer")
         self.resize(1340, 800)
         self.setMinimumSize(1020, 640)
         self.setStyleSheet(CLEAN_STYLESHEET)
 
-        self.watcher = AntigravityBrainWatcher()
+        icon_path = os.path.join(BASE_DIR, "assets", "icon.ico")
+        if os.path.isfile(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+
+        self.watcher = AntigravityBrainWatcher(brain_dir=brain_dir)
         self.watcher.start()
         self.last_event_id = 0
         self.is_first_sync = True
@@ -936,9 +944,9 @@ class PixelAgentsWindow(QMainWindow):
 
         brand_col = QVBoxLayout()
         brand_col.setSpacing(1)
-        title_lbl = QLabel("👾 PIXEL AGENTS  ·  ANTIGRAVITY")
+        title_lbl = QLabel("👾 PIXELAVITY  ·  ANTIGRAVITY")
         title_lbl.setObjectName("BrandTitle")
-        sub_lbl = QLabel("Modo Espectador en Tiempo Real")
+        sub_lbl = QLabel("MediaHub Conglomerate · Modo Espectador en Tiempo Real")
         sub_lbl.setObjectName("BrandSub")
         brand_col.addWidget(title_lbl)
         brand_col.addWidget(sub_lbl)
@@ -1114,11 +1122,27 @@ class PixelAgentsWindow(QMainWindow):
         event.accept()
 
 
-def main():
+def run_desktop_app(brain_dir: Optional[str] = None):
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MediaHub.Pixelavity.App")
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
-    win = PixelAgentsWindow()
+    app.setApplicationName("Pixelavity")
+    icon_path = os.path.join(BASE_DIR, "assets", "icon.ico")
+    if os.path.isfile(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+
+    win = PixelAgentsWindow(brain_dir=brain_dir)
     win.show()
     sys.exit(app.exec())
+
+
+def main():
+    run_desktop_app()
 
 
 if __name__ == "__main__":
