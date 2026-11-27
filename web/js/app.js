@@ -440,13 +440,13 @@
   function drawWorld(nowSec, visibleEntities) {
     const occupied = getOccupiedStations(visibleEntities);
 
-    // Fondo profundo limpio
-    ctx.fillStyle = "#080b13";
+    // Fondo profundo estilo Pixel Agents
+    ctx.fillStyle = "#1c1e2a";
     ctx.fillRect(0, 0, W, H);
 
     // Corredor central
-    drawRect(20, 264, W - 40, 60, "#101624", "#1d283f", 1);
-    ctx.strokeStyle = "rgba(56, 189, 248, 0.14)";
+    drawRect(20, 264, W - 40, 60, "#ddd0b6", "#131820", 2);
+    ctx.strokeStyle = "rgba(168, 144, 112, 0.45)";
     ctx.lineWidth = 1;
     ctx.setLineDash([6, 8]);
     ctx.beginPath();
@@ -455,10 +455,10 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.fillStyle = "rgba(148, 163, 184, 0.25)";
+    ctx.fillStyle = "rgba(69, 42, 24, 0.55)";
     ctx.font = "600 9px Consolas, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("ANTIGRAVITY HQ  ·  CORREDOR CENTRAL", W / 2, HALLWAY_Y + 3);
+    ctx.fillText("PIXELAVITY HQ  ·  CORREDOR CENTRAL", W / 2, HALLWAY_Y + 3);
 
     // Dibujar las 8 salas con iluminación dinámica según actividad
     for (const st of Object.values(STATIONS)) {
@@ -481,35 +481,39 @@
   function drawStationBase(st, count, isWorkingRoom) {
     const { x, y, w, h } = st.rect;
 
-    // Piso en cuadrícula suave
+    // Piso en cuadrícula cálida Pixel Agents
     const tile = 16;
     for (let ty = y; ty < y + h; ty += tile) {
       for (let tx = x; tx < x + w; tx += tile) {
-        const even = ((Math.floor((tx - x) / tile) + Math.floor((ty - y) / tile)) % 2) === 0;
-        ctx.fillStyle = even ? st.floorA : st.floorB;
-        ctx.fillRect(tx, ty, Math.min(tile, x + w - tx), Math.min(tile, y + h - ty));
+        const tw = Math.min(tile, x + w - tx);
+        const th = Math.min(tile, y + h - ty);
+        ctx.fillStyle = "#ddd0b6";
+        ctx.fillRect(tx, ty, tw, th);
+        ctx.fillStyle = "#c9b899";
+        ctx.fillRect(tx + tw - 1, ty, 1, th);
+        ctx.fillRect(tx, ty + th - 1, tw, 1);
       }
     }
 
-    // Borde sutil (se ilumina con el color de acento cuando un agente trabaja en esta sala)
-    ctx.strokeStyle = isWorkingRoom ? st.accent : "#23304a";
-    ctx.lineWidth = isWorkingRoom ? 2 : 1;
+    // Muro arquitectónico teal estilo Pixel Agents
+    ctx.strokeStyle = isWorkingRoom ? st.accent : "#1e4255";
+    ctx.lineWidth = 3;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
     // Puerta abierta al corredor
-    ctx.fillStyle = "#101624";
+    ctx.fillStyle = "#ddd0b6";
     if (st.door.y <= 270) {
-      ctx.fillRect(st.door.x - 18, y + h - 3, 36, 6);
+      ctx.fillRect(st.door.x - 18, y + h - 4, 36, 8);
     } else {
-      ctx.fillRect(st.door.x - 18, y - 3, 36, 6);
+      ctx.fillRect(st.door.x - 18, y - 4, 36, 8);
     }
 
-    // Cabecera minimalista de sala
-    drawRect(x + 1, y + 1, w - 2, 26, "rgba(10, 14, 24, 0.78)");
-    ctx.fillStyle = isWorkingRoom ? st.accent : "#94a3b8";
+    // Cabecera de sala estilo muro teal
+    drawRect(x + 1, y + 1, w - 2, 24, "#1e4255");
+    ctx.fillStyle = isWorkingRoom ? "#fde047" : "#f8fafc";
     ctx.font = "bold 10px Consolas, monospace";
     ctx.textAlign = "left";
-    ctx.fillText(`${st.icon} ${st.title}`, x + 10, y + 18);
+    ctx.fillText(`${st.icon} ${st.title}`, x + 10, y + 17);
 
     // Indicador numérico discreto si hay agentes dentro
     if (count > 0) {
@@ -639,22 +643,21 @@
       const dx = slot.x - 42;
       const dy = slot.y - 46;
       const occ = activeDesks.has(idx);
-      drawRect(slot.x - 10, slot.y + 4, 20, 14, "#1e293b", "#334155", 1);
-      drawRect(dx, dy, 84, 34, "#1e293b", occ ? "#34d399" : "#334155", 1);
+      drawRect(slot.x - 10, slot.y + 4, 20, 14, "#a67443", "#452a18", 1);
+      drawRect(dx, dy, 84, 34, "#c4925c", "#54351c", 1);
       for (let m = 0; m < 2; m++) {
         const mx = dx + 8 + m * 36;
         const my = dy + 4;
-        drawRect(mx, my, 28, 18, occ ? "#062116" : "#0c121d", occ ? "#34d399" : "#263245", 1);
+        drawRect(mx, my, 28, 18, "#ece9df", "#18161e", 1);
+        drawRect(mx + 3, my + 3, 22, 12, occ ? "#112a22" : "#242b38");
         if (occ) {
           const sc = Math.floor(nowSec * 8 + idx + m) % 3;
           ctx.fillStyle = m === 0 ? "#34d399" : "#38bdf8";
-          ctx.fillRect(mx + 3, my + 4 + sc, 16, 2);
-          ctx.fillRect(mx + 3, my + 9, 20, 2);
-          ctx.fillRect(mx + 3, my + 14 - sc, 12, 2);
+          ctx.fillRect(mx + 5, my + 5 + sc, 12, 2);
+          ctx.fillRect(mx + 5, my + 9, 16, 2);
         }
       }
-      drawRect(dx + 24, dy + 25, 28, 5, "#0f172a", "#334155", 1);
-      drawRect(dx + 70, dy + 6, 10, 22, "#0f172a", occ ? "#38bdf8" : "#263245", 1);
+      drawRect(dx + 24, dy + 25, 28, 5, "#ece9df", "#18161e", 1);
     });
   }
 
@@ -776,65 +779,70 @@
 
     const py = y + walkBob;
 
-    // Piernas
-    const legL = ent.isWalking ? (ent.walkFrame === 1 ? -3 : ent.walkFrame === 3 ? 2 : 0) : 0;
-    const legR = ent.isWalking ? (ent.walkFrame === 3 ? -3 : ent.walkFrame === 1 ? 2 : 0) : 0;
-    ctx.fillStyle = "#1e293b";
-    ctx.fillRect(x - 6, py + 3 + legL, 4, 8);
-    ctx.fillRect(x + 2, py + 3 + legR, 4, 8);
+    // Piernas y zapatos (estilo Pixel Agents 16x32)
+    const legL = ent.isWalking ? (ent.walkFrame === 1 ? -2 : ent.walkFrame === 3 ? 2 : 0) : 0;
+    const legR = ent.isWalking ? (ent.walkFrame === 3 ? -2 : ent.walkFrame === 1 ? 2 : 0) : 0;
+    drawRect(x - 6, py + 3 + legL, 5, 7, "#1d4e78", "#18161e", 1);
+    drawRect(x + 1, py + 3 + legR, 5, 7, "#1d4e78", "#18161e", 1);
+    ctx.fillStyle = "#1a1e26";
+    ctx.fillRect(x - 6, py + 8 + legL, 5, 3);
+    ctx.fillRect(x + 1, py + 8 + legR, 5, 3);
 
-    // Torso
-    drawRect(x - 8, py - 9, 16, 13, ent.palette.suit, "#090d16", 1);
-    ctx.fillStyle = ent.palette.accent || "#ffffff";
-    ctx.fillRect(x - 2, py - 6, 4, 4);
+    // Torso con camisa y corbata
+    drawRect(x - 8, py - 9, 16, 13, ent.palette.suit || "#1f6199", "#18161e", 1);
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(x - 2, py - 8, 4, 10);
+    ctx.fillStyle = "#18161e";
+    ctx.fillRect(x - 1, py - 7, 2, 7);
 
     // Brazos
     const isTyping = !ent.isWalking && (ent.currentStation === "coding_desk" || ent.currentStation === "server_lab");
     const jitter = isTyping ? Math.round(Math.sin(nowSec * 24) * 2) : 0;
-    ctx.fillStyle = ent.palette.suit;
-    ctx.fillRect(x - 12, py - 8 + jitter, 4, 9);
-    ctx.fillRect(x + 8,  py - 8 - jitter, 4, 9);
+    drawRect(x - 12, py - 8 + jitter, 4, 9, ent.palette.suit || "#1f6199", "#18161e", 1);
+    drawRect(x + 8, py - 8 - jitter, 4, 9, ent.palette.suit || "#1f6199", "#18161e", 1);
+    ctx.fillStyle = "#f5c59c";
+    ctx.fillRect(x - 11, py - 1 + jitter, 2, 2);
+    ctx.fillRect(x + 9, py - 1 - jitter, 2, 2);
 
     // Cabeza
-    drawRect(x - 7, py - 22, 14, 13, "#fed7aa", "#090d16", 1);
+    drawRect(x - 7, py - 21, 14, 12, "#f5c59c", "#18161e", 1);
 
-    // Cabello
-    ctx.fillStyle = ent.palette.hair || "#1e293b";
-    ctx.fillRect(x - 8, py - 24, 16, 5);
-    if (ent.face === "left") ctx.fillRect(x + 4, py - 22, 4, 8);
-    if (ent.face === "right") ctx.fillRect(x - 8, py - 22, 4, 8);
+    // Cabello con mechón estilo Pixel Agents
+    const hairC = ent.palette.hair || "#946b3e";
+    drawRect(x - 9, py - 28, 18, 10, hairC, "#18161e", 1);
+    ctx.fillRect(x - 5, py - 31, 4, 4);
+    ctx.fillRect(x + 1, py - 30, 3, 3);
+    if (ent.face === "left") ctx.fillRect(x + 3, py - 22, 5, 8);
+    if (ent.face === "right") ctx.fillRect(x - 8, py - 22, 5, 8);
 
-    // Ojos
-    ctx.fillStyle = "#0f172a";
-    if (ent.face === "left") {
+    // Ojos 2x2 blanco + pupila oscura
+    if (ent.face === "down") {
+      ctx.fillStyle = "#f8fafc";
       ctx.fillRect(x - 5, py - 16, 2, 3);
-      ctx.fillRect(x - 1, py - 16, 2, 3);
-    } else if (ent.face === "right") {
-      ctx.fillRect(x - 1, py - 16, 2, 3);
       ctx.fillRect(x + 3, py - 16, 2, 3);
-    } else if (ent.face === "down") {
+      ctx.fillStyle = "#18161e";
+      ctx.fillRect(x - 3, py - 16, 2, 3);
+      ctx.fillRect(x + 1, py - 16, 2, 3);
+    } else if (ent.face === "left") {
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(x - 6, py - 16, 2, 3);
+      ctx.fillStyle = "#18161e";
       ctx.fillRect(x - 4, py - 16, 2, 3);
+    } else if (ent.face === "right") {
+      ctx.fillStyle = "#18161e";
       ctx.fillRect(x + 2, py - 16, 2, 3);
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(x + 4, py - 16, 2, 3);
     }
 
-    // Antena subagente o audífonos
-    if (ent.isSubagent) {
-      ctx.fillStyle = "#fbbf24";
-      ctx.fillRect(x - 1, py - 29, 2, 5);
-      ctx.fillStyle = "#38bdf8";
-      ctx.fillRect(x - 2, py - 31, 4, 2);
-    } else {
-      ctx.fillStyle = ent.palette.accent || "#38bdf8";
-      ctx.fillRect(x - 9, py - 18, 2, 5);
-      ctx.fillRect(x + 7, py - 18, 2, 5);
-    }
-
-    // Objeto contextual
+    // Libro en biblioteca (con lentes) o taza en lounge
     if (!ent.isWalking) {
       if (ent.currentStation === "library") {
-        drawRect(x - 6, py - 5, 12, 8, "#fef3c7", "#d97706", 1);
+        ctx.fillStyle = "#18161e";
+        ctx.fillRect(x - 6, py - 16, 12, 1);
+        drawRect(x - 5, py - 6, 10, 8, "#f8fafc", "#18161e", 1);
       } else if (ent.currentStation === "lounge") {
-        drawRect(x + 5, py - 6, 6, 7, "#f8fafc", "#f87171", 1);
+        drawRect(x + 6, py - 6, 6, 6, "#f8fafc", "#18161e", 1);
       }
     }
 

@@ -15,6 +15,7 @@ hiddenimports = [
     'core.server',
     'core.customization',
     'core.sprites',
+    'core.office_sprites',
     'core.dialogs_qt',
     'app_qt',
     'ctypes',

@@ -35,6 +35,19 @@ jobs:
       - name: Build Executable with PyInstaller Spec
         run: python -m PyInstaller Pixelavity.spec --noconfirm
 
+      - name: Sign Executable Binary (Code Signing)
+        shell: pwsh
+        env:
+          MEDIAHUB_CERT_BASE64: ${{ secrets.MEDIAHUB_CERT_BASE64 }}
+          MEDIAHUB_CERT_PASSWORD: ${{ secrets.MEDIAHUB_CERT_PASSWORD }}
+        run: |
+          if (Test-Path "dist\Pixelavity\Pixelavity.exe") {
+            .\scripts\sign_binary.ps1 -FilePath "dist\Pixelavity\Pixelavity.exe"
+          } else {
+            Write-Error "No se encontró el ejecutable a firmar: dist\Pixelavity\Pixelavity.exe"
+            exit 1
+          }
+
       - name: Compress Build to ZIP
         run: |
           Compress-Archive -Path "dist\Pixelavity\*" -DestinationPath "Pixelavity.zip" -Force
@@ -68,6 +81,19 @@ jobs:
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
         with:
           path: installer.iss
+
+      - name: Sign Inno Setup Installer
+        shell: pwsh
+        env:
+          MEDIAHUB_CERT_BASE64: ${{ secrets.MEDIAHUB_CERT_BASE64 }}
+          MEDIAHUB_CERT_PASSWORD: ${{ secrets.MEDIAHUB_CERT_PASSWORD }}
+        run: |
+          if (Test-Path "Output\Pixelavity-Setup.exe") {
+            .\scripts\sign_binary.ps1 -FilePath "Output\Pixelavity-Setup.exe"
+          } else {
+            Write-Error "No se encontró el instalador a firmar: Output\Pixelavity-Setup.exe"
+            exit 1
+          }
 
       - name: Publish Release Asset
         uses: softprops/action-gh-release@v2

@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, Callable, List
 from PyQt6.QtCore import Qt, QTimer, QRectF, QSize
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
-    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QListWidget, QListWidgetItem,
     QFrame, QColorDialog, QMessageBox, QCheckBox, QButtonGroup,
     QScrollArea, QStackedWidget, QComboBox
@@ -40,27 +40,27 @@ from core.sprites import SPRITE_ENGINE
 
 
 CLOTHING_COLOR_PRESETS = [
-    "#585358", "#343b59", "#2b3a55", "#1e293b", "#7c1d2e",
-    "#0f766e", "#a89282", "#78350f", "#d97706", "#38bdf8",
+    "#1f6199", "#1d4e78", "#2a7a64", "#942c4f", "#3d4a6b",
+    "#0e7490", "#78350f", "#585358", "#334155", "#d97706",
     "#10b981", "#f43f5e", "#7e22ce", "#e2e8f0",
 ]
 
 SHOE_COLOR_PRESETS = [
-    "#3d261f", "#7c1d2e", "#1e293b", "#0f172a", "#78350f",
+    "#1a1e26", "#3d261f", "#1e293b", "#7c1d2e", "#78350f",
     "#b45309", "#15803d", "#0284c7", "#6b21a8", "#e2e8f0",
 ]
 
 
 PREVIEW_ANIMATIONS = [
-    ("walk",          "Caminar"),
-    ("typing_seated", "Sentado · Programar"),
-    ("reading",       "Biblioteca · Leer Libro"),
-    ("thinking",      "Pizarra · Pensar / Escribir"),
+    ("walk",          "Caminar (walk1-3)"),
+    ("typing_seated", "Sentado · Programar (type1-2)"),
+    ("reading",       "Leer con Lentes (read1-2)"),
+    ("thinking",      "Pizarra · Pensar"),
     ("terminal",      "Terminal · Servidor"),
-    ("browsing",      "Web · Radar"),
-    ("painting",      "Estudio UI · Pintar"),
-    ("orchestrating", "Orchestrator · Dirigir"),
-    ("relaxing",      "Lounge · Café Sentado"),
+    ("browsing",      "Web · Navegar"),
+    ("painting",      "Estudio Diseño · Pintar"),
+    ("orchestrating", "Orchestrator · Tablet"),
+    ("relaxing",      "Lounge · Café"),
     ("idle",          "Quieto · Parpadear"),
 ]
 
@@ -122,16 +122,16 @@ class FourDirPreviewWidget(QWidget):
             return
 
         directions = [
-            ("down",  "ADELANTE"),
-            ("up",    "ATRÁS"),
-            ("left",  "IZQUIERDA"),
-            ("right", "DERECHA"),
+            ("down",  "DOWN (ADELANTE)"),
+            ("right", "RIGHT (DERECHA)"),
+            ("up",    "UP (ATRÁS)"),
+            ("left",  "LEFT (IZQUIERDA)"),
         ]
 
         cols = 2
         cell_w = self.width() / cols
         cell_h = (self.height() - 16) / 2
-        scale = 3 if cell_h >= 175 else 2
+        scale = 4 if cell_h >= 165 else 3
 
         for idx, (dir_id, label) in enumerate(directions):
             r = idx // cols
@@ -154,16 +154,17 @@ class FourDirPreviewWidget(QWidget):
             )
             bob = -2 if (self.preview_action == "walk" and self.walk_frame % 2 == 1) else 0
             draw_y = int(cy - pix.height() / 2 - 8 + bob)
-            foot_y = draw_y + pix.height() - (3 * scale)
+            foot_y = draw_y + pix.height() - (2 * scale)
 
-            p.setBrush(QColor(0, 0, 0, 120))
+            p.setBrush(QColor(0, 0, 0, 110))
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QRectF(cx - 24, foot_y - 4, 48, 10))
+            p.drawEllipse(QRectF(cx - 22, foot_y - 4, 44, 10))
 
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
             p.drawPixmap(int(cx - pix.width() / 2), draw_y, pix)
 
             p.setPen(QColor("#94a3b8"))
-            p.setFont(QFont("Consolas", 9, QFont.Weight.Bold))
+            p.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
             p.drawText(
                 QRectF(card_rect.left(), card_rect.bottom() - 20, card_rect.width(), 16),
                 Qt.AlignmentFlag.AlignCenter,
@@ -187,7 +188,7 @@ class CharacterCreatorDialog(QDialog):
         super().__init__(parent)
         self.manager = manager
         self.on_changed = on_changed
-        self.setWindowTitle("Pixelavity · Creador Visual de Personajes (Alto Detalle)")
+        self.setWindowTitle("Pixelavity · Creador Visual de Personajes (Pixel Agents)")
         self.resize(1160, 720)
         self.setMinimumSize(1040, 650)
 
@@ -321,7 +322,7 @@ class CharacterCreatorDialog(QDialog):
         left_layout.addWidget(lbl_pool)
 
         self.list_chars = QListWidget()
-        self.list_chars.setIconSize(QSize(44, 56))
+        self.list_chars.setIconSize(QSize(32, 56))
         self.list_chars.currentRowChanged.connect(self._on_row_selected)
         left_layout.addWidget(self.list_chars, stretch=1)
 
@@ -828,7 +829,7 @@ class OfficeBuilderDock(QFrame):
         self.active_category: str = "devices"
         self.tool_mode: str = "place_object"
         self.selected_object_type: str = "computer_desk"
-        self.selected_floor_material: str = "walnut_wood"
+        self.selected_floor_material: str = "cream_tile"
         self.selected_wall_material: str = "dark_tech"
         self.floor_paint_submode: str = "floor_1x1"
 
@@ -1119,3 +1120,355 @@ class OfficeBuilderDock(QFrame):
     def _reset_map(self):
         self.manager.reset_office_to_default()
         self.on_state_changed()
+
+
+# =============================================================================
+# PANEL DE CONSUMO / VIEW USAGE (ESTILO ANTIGRAVITY USAGE)
+# =============================================================================
+def _format_tokens(n: int) -> str:
+    n = int(n or 0)
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.2f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return str(n)
+
+
+def _format_duration(seconds: int) -> str:
+    s = max(0, int(seconds or 0))
+    days, rem = divmod(s, 86400)
+    hours, rem = divmod(rem, 3600)
+    mins = rem // 60
+    if days > 0:
+        return f"{days}d {hours}h"
+    if hours > 0:
+        return f"{hours}h {mins}m"
+    return f"{mins}m"
+
+
+class UsageRingWidget(QWidget):
+    """Anillo circular estilo Antigravity Usage (verde/ámbar/rojo)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.fraction: float = 1.0
+        self.is_remaining_mode: bool = True
+        self.setFixedSize(24, 24)
+
+    def set_value(self, fraction: float, is_remaining_mode: bool = True):
+        self.fraction = max(0.0, min(1.0, float(fraction)))
+        self.is_remaining_mode = is_remaining_mode
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(3.5, 3.5, self.width() - 7.0, self.height() - 7.0)
+
+        p.setPen(QPen(QColor("#2a3447"), 2.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawEllipse(rect)
+
+        if self.is_remaining_mode:
+            if self.fraction >= 0.50:
+                col = QColor("#4ade80")
+            elif self.fraction >= 0.20:
+                col = QColor("#fbbf24")
+            else:
+                col = QColor("#f87171")
+            span = -int(round(self.fraction * 360.0 * 16.0))
+        else:
+            if self.fraction < 0.60:
+                col = QColor("#4ade80")
+            elif self.fraction < 0.85:
+                col = QColor("#fbbf24")
+            else:
+                col = QColor("#38bdf8")
+            draw_frac = max(0.08, self.fraction) if self.fraction > 0 else 0.0
+            span = -int(round(draw_frac * 360.0 * 16.0))
+
+        if span != 0:
+            p.setPen(QPen(col, 2.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(rect, 90 * 16, span)
+        p.end()
+
+
+class UsagePopupDialog(QDialog):
+    """Ventana flotante de Uso / Consumo inspirada en el panel Usage de Antigravity."""
+
+    def __init__(self, watcher, parent=None):
+        super().__init__(parent)
+        self.watcher = watcher
+        self.setWindowTitle("Usage · Pixelavity")
+        self.setMinimumWidth(440)
+        self.setMaximumWidth(520)
+        self._bridge_path = watcher.get_usage_bridge_path()
+
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #141923;
+                color: #e2e8f0;
+                font-family: 'Segoe UI', sans-serif;
+            }
+            QFrame#UsageCard {
+                background-color: #19202d;
+                border: 1px solid #263145;
+                border-radius: 10px;
+            }
+            QLabel#HeaderTitle {
+                font-size: 13px;
+                font-weight: bold;
+                color: #94a3b8;
+            }
+            QLabel#GroupTitle {
+                font-size: 13px;
+                font-weight: bold;
+                color: #f8fafc;
+            }
+            QLabel#RowTitle {
+                font-size: 12px;
+                color: #cbd5e1;
+            }
+            QLabel#RowSub {
+                font-size: 11px;
+                color: #8292aa;
+            }
+            QLabel#RowValue {
+                font-size: 12px;
+                font-weight: 600;
+                color: #cbd5e1;
+            }
+            QPushButton {
+                background-color: #1d2638;
+                color: #cbd5e1;
+                border: 1px solid #2d3b55;
+                border-radius: 6px;
+                padding: 5px 10px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #253149;
+                border-color: #38bdf8;
+                color: #ffffff;
+            }
+        """)
+
+        self._build_ui()
+        self.refresh_usage(force=True)
+        self.adjustSize()
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(lambda: self.refresh_usage(force=False))
+        self._timer.start(3000)
+
+    def _make_limit_row(self, title: str):
+        row = QWidget()
+        row.setMinimumHeight(44)
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(0, 4, 0, 4)
+        hl.setSpacing(12)
+
+        left = QVBoxLayout()
+        left.setSpacing(3)
+        lbl_title = QLabel(title)
+        lbl_title.setObjectName("RowTitle")
+        lbl_sub = QLabel("")
+        lbl_sub.setObjectName("RowSub")
+        lbl_sub.setMinimumHeight(16)
+        left.addWidget(lbl_title)
+        left.addWidget(lbl_sub)
+        hl.addLayout(left, stretch=1)
+
+        lbl_val = QLabel("—")
+        lbl_val.setObjectName("RowValue")
+        lbl_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        ring = UsageRingWidget()
+        hl.addWidget(lbl_val)
+        hl.addWidget(ring, alignment=Qt.AlignmentFlag.AlignVCenter)
+        return row, lbl_sub, lbl_val, ring
+
+    def _build_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        # Cabecera
+        hdr = QHBoxLayout()
+        lbl_h = QLabel("Usage")
+        lbl_h.setObjectName("HeaderTitle")
+        hdr.addWidget(lbl_h)
+
+        self.lbl_mode = QLabel("● Telemetría Local")
+        self.lbl_mode.setStyleSheet(
+            "background: rgba(56,189,248,0.14); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4);"
+            "border-radius: 9px; padding: 2px 8px; font-family: Consolas; font-size: 10px; font-weight: bold;"
+        )
+        hdr.addWidget(self.lbl_mode)
+        hdr.addStretch()
+
+        btn_ref = QPushButton("Actualizar")
+        btn_ref.clicked.connect(lambda: self.refresh_usage(force=True))
+        hdr.addWidget(btn_ref)
+        root.addLayout(hdr)
+
+        # Tarjeta principal (estilo menú Usage)
+        card = QFrame()
+        card.setObjectName("UsageCard")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(16, 14, 16, 14)
+        cl.setSpacing(12)
+
+        lbl_g1 = QLabel("Gemini Models")
+        lbl_g1.setObjectName("GroupTitle")
+        cl.addWidget(lbl_g1)
+
+        w_g7, self.gem_w_sub, self.gem_w_val, self.gem_w_ring = self._make_limit_row("Weekly limit")
+        w_g5, self.gem_5_sub, self.gem_5_val, self.gem_5_ring = self._make_limit_row("5h limit")
+        cl.addWidget(w_g7)
+        cl.addWidget(w_g5)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("background-color: #263145; max-height: 1px; border: none;")
+        cl.addWidget(sep)
+
+        lbl_g2 = QLabel("Claude and GPT models")
+        lbl_g2.setObjectName("GroupTitle")
+        cl.addWidget(lbl_g2)
+
+        w_t7, self.tp_w_sub, self.tp_w_val, self.tp_w_ring = self._make_limit_row("Weekly limit")
+        w_t5, self.tp_5_sub, self.tp_5_val, self.tp_5_ring = self._make_limit_row("5h limit")
+        cl.addWidget(w_t7)
+        cl.addWidget(w_t5)
+
+        root.addWidget(card)
+
+        # Desglose por modelo en los últimos 7 días
+        models_card = QFrame()
+        models_card.setObjectName("UsageCard")
+        ml = QVBoxLayout(models_card)
+        ml.setContentsMargins(14, 10, 14, 10)
+        ml.setSpacing(5)
+
+        self.lbl_models_hdr = QLabel("Consumo detectado por modelo (7 días)")
+        self.lbl_models_hdr.setStyleSheet("font-size: 11px; font-weight: bold; color: #94a3b8;")
+        ml.addWidget(self.lbl_models_hdr)
+
+        self.lbl_models_list = QLabel("Sin actividad registrada en los últimos 7 días.")
+        self.lbl_models_list.setWordWrap(True)
+        self.lbl_models_list.setStyleSheet("font-family: Consolas; font-size: 11px; color: #cbd5e1;")
+        ml.addWidget(self.lbl_models_list)
+        root.addWidget(models_card)
+
+        # Nota aclaratoria + botones
+        self.lbl_note = QLabel(
+            "Los tokens se calculan en vivo desde transcript.jsonl. "
+            "Si usas Antigravity CLI (/statusline), Pixelavity también muestra el % exacto de cuota."
+        )
+        self.lbl_note.setWordWrap(True)
+        self.lbl_note.setStyleSheet("font-size: 10.5px; color: #7888a0;")
+        root.addWidget(self.lbl_note)
+
+        btns = QHBoxLayout()
+        self.btn_copy_bridge = QPushButton("Copiar hook /statusline (CLI)")
+        self.btn_copy_bridge.setToolTip("Copia el comando PowerShell para conectar la cuota exacta desde agy /statusline")
+        self.btn_copy_bridge.clicked.connect(self._copy_bridge_cmd)
+        btns.addWidget(self.btn_copy_bridge)
+        btns.addStretch()
+
+        btn_close = QPushButton("Cerrar")
+        btn_close.clicked.connect(self.accept)
+        btns.addWidget(btn_close)
+        root.addLayout(btns)
+
+    def _copy_bridge_cmd(self):
+        cmd = f'powershell -NoProfile -Command "$in=[Console]::In.ReadToEnd(); Set-Content -LiteralPath \'{self._bridge_path}\' -Value $in -Encoding UTF8"'
+        cb = QApplication.clipboard()
+        if cb:
+            cb.setText(f"/statusline {cmd}")
+        self.btn_copy_bridge.setText("¡Copiado al portapapeles!")
+        QTimer.singleShot(2000, lambda: self.btn_copy_bridge.setText("Copiar hook /statusline (CLI)"))
+
+    def refresh_usage(self, force: bool = False):
+        data = self.watcher.get_usage_summary(force_refresh=force)
+        self._bridge_path = data.get("bridge_path", self._bridge_path)
+        quota = data.get("quota")
+        now = data.get("timestamp", 0.0)
+
+        if quota:
+            self.lbl_mode.setText("● Cuota Exacta (CLI)")
+            self.lbl_mode.setStyleSheet(
+                "background: rgba(74,222,128,0.14); color: #4ade80; border: 1px solid rgba(74,222,128,0.45);"
+                "border-radius: 9px; padding: 2px 8px; font-family: Consolas; font-size: 10px; font-weight: bold;"
+            )
+        else:
+            self.lbl_mode.setText("● Telemetría Local")
+            self.lbl_mode.setStyleSheet(
+                "background: rgba(56,189,248,0.14); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4);"
+                "border-radius: 9px; padding: 2px 8px; font-family: Consolas; font-size: 10px; font-weight: bold;"
+            )
+
+        def _apply_row(win: Dict[str, Any], q_bucket: Optional[Dict[str, Any]], sub_lbl: QLabel, val_lbl: QLabel, ring: UsageRingWidget, is_5h: bool):
+            tok_total = win.get("total_tokens", 0)
+            in_t = win.get("input_tokens", 0)
+            out_t = win.get("output_tokens", 0)
+            cache_t = win.get("cache_read_tokens", 0)
+            turns = win.get("turns", 0)
+
+            if q_bucket is not None:
+                pct = q_bucket.get("remaining_pct", 100)
+                frac = q_bucket.get("remaining_fraction", 1.0)
+                reset_s = q_bucket.get("reset_in_seconds", 0)
+                sub_txt = f"Resets in {_format_duration(reset_s)}" if reset_s > 0 else "Ventana activa"
+                if turns > 0:
+                    sub_txt += f" · {_format_tokens(tok_total)} tok"
+                sub_lbl.setText(sub_txt)
+                val_lbl.setText(f"{pct}% left")
+                ring.set_value(frac, is_remaining_mode=True)
+            else:
+                if turns == 0:
+                    sub_lbl.setText("Sin uso registrado en esta ventana")
+                    val_lbl.setText("0 tok")
+                    ring.set_value(1.0, is_remaining_mode=True)
+                else:
+                    if is_5h:
+                        oldest = win.get("oldest_ts")
+                        rem_s = max(0, int((oldest + 5 * 3600) - now)) if oldest else 0
+                        reset_txt = f" · ventana {_format_duration(rem_s)}" if rem_s > 0 else ""
+                        sub_lbl.setText(f"{turns} pasos · in {_format_tokens(in_t)} / out {_format_tokens(out_t)}{reset_txt}")
+                        soft_cap = 2_000_000.0
+                    else:
+                        sub_lbl.setText(
+                            f"{turns} pasos · in {_format_tokens(in_t)} / out {_format_tokens(out_t)} · caché {_format_tokens(cache_t)}"
+                        )
+                        soft_cap = 10_000_000.0
+                    val_lbl.setText(f"{_format_tokens(tok_total)} tok")
+                    ring.set_value(min(1.0, tok_total / soft_cap), is_remaining_mode=False)
+
+        gem = data.get("gemini", {})
+        tp = data.get("third_party", {})
+        q = quota or {}
+        _apply_row(gem.get("window_7d", {}), q.get("gemini_weekly"), self.gem_w_sub, self.gem_w_val, self.gem_w_ring, is_5h=False)
+        _apply_row(gem.get("window_5h", {}), q.get("gemini_5h"), self.gem_5_sub, self.gem_5_val, self.gem_5_ring, is_5h=True)
+        _apply_row(tp.get("window_7d", {}), q.get("third_party_weekly"), self.tp_w_sub, self.tp_w_val, self.tp_w_ring, is_5h=False)
+        _apply_row(tp.get("window_5h", {}), q.get("third_party_5h"), self.tp_5_sub, self.tp_5_val, self.tp_5_ring, is_5h=True)
+
+        models = data.get("by_model", [])
+        self.lbl_models_hdr.setText(
+            f"Consumo por modelo (7 días · {data.get('conversations_7d', 0)} chats · {data.get('conversations_5h', 0)} en 5h)"
+        )
+        if models:
+            lines = []
+            for m in models[:5]:
+                lines.append(
+                    f"• {m['model']}: {_format_tokens(m['total_tokens'])} tok "
+                    f"({m['turns']} pasos, caché {_format_tokens(m['cache_read_tokens'])})"
+                )
+            self.lbl_models_list.setText("\n".join(lines))
+        else:
+            self.lbl_models_list.setText("Sin pasos con métricas de tokens en los últimos 7 días.")
+
+    def closeEvent(self, event):
+        if hasattr(self, "_timer"):
+            self._timer.stop()
+        super().closeEvent(event)

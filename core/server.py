@@ -57,6 +57,10 @@ class PixelAgentsRequestHandler(BaseHTTPRequestHandler):
             self._send_json(snap)
             return
 
+        if route == "/api/usage":
+            self._send_json(self.watcher.get_usage_summary())
+            return
+
         if route == "/api/stream":
             # Server-Sent Events (SSE) para actualizaciones en vivo
             self.send_response(200)

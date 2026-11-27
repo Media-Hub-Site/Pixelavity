@@ -1,17 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 Pixelavity - Motor de Personalización por Cuadrículas (Tile-Grid 32x19) y Pool de Personajes
-Gestiona:
-  1. Pool de Personajes Personalizables (12 estilos de pelo esculpidos, caras, ropa, zapatos, accesorios)
+Estilo Pixel Agents (16px por celda escalado a 32x32 px):
+  1. Pool de Personajes Personalizables (14 peinados, 8 expresiones, 12 atuendos de oficina,
+     6 pantalones, 5 calzados, 12 accesorios, 6 extras de espalda)
   2. Asignación aleatoria sin repetición (solo repite si hay más agentes activos que personajes creados)
   3. Mapa de Oficina basado 100% en Cuadrículas (32 columnas x 19 filas de 32x32 px = 1024x608):
-     - Piso por cuadrícula (floor_grid[row][col]) con dos modos de pintado:
-         * Modo 1x1 (Uno por uno)
-         * Modo Rellenar (Flood-Fill BFS limitado por paredes o pisos distintos)
-     - Paredes por cuadrícula (wall_grid[row][col]) con 5 estilos de muro
+     - Piso por cuadrícula (floor_grid[row][col]) con Modo 1x1 y Modo Rellenar (Flood-Fill BFS)
+     - Paredes arquitectónicas teal/ladrillo/madera/cristal por cuadrícula (wall_grid[row][col])
      - Objetos (Dispositivos, Muebles, Decoración) posicionados estrictamente en celdas (col, row)
-       con tamaño en celdas (tile_w x tile_h) y prevención de solapamiento.
-  4. Reglas mínimas de dispositivos interactivos (mín. 1 Computador, 1 Mueble de Libros, etc.)
+  4. Reglas mínimas de dispositivos interactivos (mín. 1 Computador, 1 Estantería, etc.)
   5. Control de demanda y Pair-Programming / Colaboración por celdas adyacentes.
 """
 
@@ -61,224 +59,306 @@ WORLD_H = GRID_ROWS * TILE_SIZE  # 608
 
 
 # =============================================================================
-# CATÁLOGOS DE PERSONALIZACIÓN DE PERSONAJES (ALTO DETALLE PIXEL ART RPG)
+# CATÁLOGOS DE PERSONALIZACIÓN PIXEL AGENTS (16x32 CHIBI OFICINA)
 # =============================================================================
 SKIN_TONES = [
     {"id": "ivory", "name": "Marfil Cálido",  "color": "#fce0c8"},
-    {"id": "peach", "name": "Durazno Claro",  "color": "#f6c198"},
+    {"id": "peach", "name": "Durazno Pixel",  "color": "#f5c59c"},
     {"id": "warm",  "name": "Trigueño",       "color": "#e5a370"},
-    {"id": "tan",   "name": "Bronceado",      "color": "#cc8450"},
     {"id": "olive", "name": "Oliva Dorado",   "color": "#d49c6e"},
+    {"id": "tan",   "name": "Bronceado",      "color": "#cc8450"},
     {"id": "brown", "name": "Moreno",         "color": "#9d5d36"},
     {"id": "deep",  "name": "Ébano",          "color": "#6b3c22"},
 ]
 
 EYE_COLORS = [
-    {"id": "obsidian", "name": "Oscuro / Carbón", "color": "#261a24"},
+    {"id": "obsidian", "name": "Oscuro Pixel",    "color": "#18161e"},
     {"id": "ocean",    "name": "Azul Zafiro",     "color": "#2563eb"},
     {"id": "emerald",  "name": "Verde Esmeralda", "color": "#10b981"},
     {"id": "amber",    "name": "Ámbar Dorado",    "color": "#d97706"},
     {"id": "crimson",  "name": "Rojo Carmesí",    "color": "#dc2626"},
-    {"id": "violet",   "name": "Violeta Arcano",  "color": "#9333ea"},
-    {"id": "cyan",     "name": "Cyan Neón",       "color": "#06b6d4"},
-    {"id": "hazel",    "name": "Avellana",        "color": "#854d0e"},
+    {"id": "violet",   "name": "Violeta",         "color": "#7c3aed"},
+    {"id": "cyan",     "name": "Cyan",            "color": "#0891b2"},
+    {"id": "hazel",    "name": "Avellana",        "color": "#78350f"},
 ]
 
 FACE_STYLES = [
-    {"id": "determined",  "name": "Guerrero Determinado"},
-    {"id": "stoic",       "name": "Serio / Ronin"},
-    {"id": "smile",       "name": "Sonrisa Clásica"},
-    {"id": "happy",       "name": "Alegre con Rubor"},
-    {"id": "focused",     "name": "Concentrado"},
-    {"id": "cool",        "name": "Guiño / Confiado"},
-    {"id": "scarred",     "name": "Veterano con Cicatriz"},
-    {"id": "beard_smile", "name": "Barba y Bigote"},
-    {"id": "cat_smile",   "name": "Sonrisa Gatito (:3)"},
-    {"id": "sleepy",      "name": "Relajado / Chill"},
-    {"id": "starry",      "name": "Ojos Brillantes"},
-    {"id": "surprised",   "name": "Sorprendido"},
+    {"id": "classic",      "name": "Clásico Pixel Agents"},
+    {"id": "happy",        "name": "Alegre con Rubor"},
+    {"id": "focused",      "name": "Concentrado"},
+    {"id": "cool",         "name": "Confiado / Guiño"},
+    {"id": "sleepy",       "name": "Relajado / Chill"},
+    {"id": "smile",        "name": "Sonrisa Amable"},
+    {"id": "beard",        "name": "Barba y Bigote"},
+    {"id": "cat",          "name": "Sonrisa Gatito (:3)"},
+    {"id": "anime_starry", "name": "Ojos Estrellados Anime"},
+    {"id": "anime_smirk",  "name": "Sonrisa Rival Anime"},
+    {"id": "anime_blush",  "name": "Rubor Kawaii Anime"},
+    {"id": "anime_scar",   "name": "Cicatriz Protagonista"},
 ]
 
 HAIR_STYLES = [
-    {"id": "warrior_messy",   "name": "Aventurero Despeinado"},
-    {"id": "ronin_swept",     "name": "Ronin al Viento"},
-    {"id": "fluffy_spiky",    "name": "Guerrero Mechones"},
-    {"id": "samurai_topknot", "name": "Coleta Samurái"},
-    {"id": "short_parted",    "name": "Corto Raya Diagonal"},
-    {"id": "ponytail",        "name": "Coleta Alta con Lazo"},
-    {"id": "long_straight",   "name": "Melena Larga Lisa"},
-    {"id": "long_wavy",       "name": "Melena Larga Ondulada"},
-    {"id": "wavy_bob",        "name": "Bob Ondulado"},
-    {"id": "wolf_cut",        "name": "Wolf Cut en Capas"},
-    {"id": "anime_spiky",     "name": "Puntas Anime / Héroe"},
-    {"id": "curtain_bangs",   "name": "Flequillo Cortina"},
-    {"id": "spiky_messy",     "name": "Puntas Rebeldes"},
-    {"id": "pigtails",        "name": "Dos Coletas Altas"},
-    {"id": "twin_buns",       "name": "Dos Moños Altos"},
-    {"id": "top_bun",         "name": "Moño Alto Recogido"},
-    {"id": "low_ponytail",    "name": "Coleta Baja Ejecutiva"},
-    {"id": "braids",          "name": "Dos Trenzas Largas"},
-    {"id": "side_shave",      "name": "Rapado Lateral / Undercut"},
-    {"id": "mohawk",          "name": "Cresta Punk / Mohawk"},
-    {"id": "curly_afro",      "name": "Rizado con Volumen"},
-    {"id": "flat_top",        "name": "Corte Alto (Flat-Top)"},
-    {"id": "receding",        "name": "Ejecutivo Clásico"},
-    {"id": "bald",            "name": "Sin Pelo"},
+    {"id": "spiky_tuft",       "name": "Mechón Puntas Clásico"},
+    {"id": "parted_neat",      "name": "Ejecutivo con Raya"},
+    {"id": "bob_cut",          "name": "Bob Clásico"},
+    {"id": "long_straight",    "name": "Melena Larga Lisa"},
+    {"id": "long_wavy",        "name": "Melena Ondulada"},
+    {"id": "ponytail",         "name": "Coleta Alta"},
+    {"id": "messy_fluffy",     "name": "Despeinado con Volumen"},
+    {"id": "curtain_bangs",    "name": "Flequillo Cortina"},
+    {"id": "buzz_short",       "name": "Corte Corto"},
+    {"id": "curly_afro",       "name": "Rizado con Volumen"},
+    {"id": "twin_buns",        "name": "Dos Moños"},
+    {"id": "top_bun",          "name": "Moño Alto"},
+    {"id": "side_swept",       "name": "Peinado al Lado"},
+    {"id": "bald",             "name": "Sin Pelo"},
+    {"id": "shonen_spikes",    "name": "Puntas Shonen Anime"},
+    {"id": "gojo_swept",       "name": "Puntas al Viento / Gojo"},
+    {"id": "levi_undercut",    "name": "Undercut Cortina Anime"},
+    {"id": "samurai_ponytail", "name": "Coleta Samurái Alta"},
+    {"id": "twintails_long",   "name": "Coletas Largas Anime"},
+    {"id": "hime_cut",         "name": "Corte Hime Anime"},
+    {"id": "wolf_mullet",      "name": "Wolf Cut / Mullet Anime"},
+    {"id": "ahoge_fluff",      "name": "Despeinado con Ahoge"},
+    {"id": "emo_cover",        "name": "Flequillo Ojo Tapado"},
+    {"id": "drill_curls",      "name": "Rizos Dobles Anime"},
 ]
 
 HAIR_COLORS = [
-    {"id": "espresso", "name": "Castaño Oscuro", "color": "#4b352a"},
-    {"id": "navy",     "name": "Azul Noche",     "color": "#3d4a6b"},
-    {"id": "blonde",   "name": "Rubio Arena",    "color": "#ead2a2"},
-    {"id": "gold",     "name": "Rubio Dorado",   "color": "#e5b23a"},
-    {"id": "auburn",   "name": "Castaño Rojizo", "color": "#a84c38"},
-    {"id": "black",    "name": "Negro Carbón",   "color": "#262a34"},
-    {"id": "ginger",   "name": "Cobrizo Vivo",   "color": "#d95d2b"},
-    {"id": "silver",   "name": "Plata / Blanco", "color": "#cbd5e1"},
-    {"id": "crimson",  "name": "Carmesí",        "color": "#b91c1c"},
-    {"id": "violet",   "name": "Violeta Cyber",  "color": "#7e22ce"},
-    {"id": "mint",     "name": "Esmeralda Neon", "color": "#0d9488"},
+    {"id": "pixel_brown",   "name": "Castaño Pixel",     "color": "#946b3e"},
+    {"id": "espresso",      "name": "Castaño Oscuro",    "color": "#4b352a"},
+    {"id": "black",         "name": "Negro Carbón",      "color": "#262a34"},
+    {"id": "white_anime",   "name": "Blanco Nieve Anime", "color": "#eef2ff"},
+    {"id": "sakura_pink",   "name": "Rosa Sakura",       "color": "#f472b6"},
+    {"id": "electric_blue", "name": "Azul Eléctrico",    "color": "#2563eb"},
+    {"id": "emerald_anime", "name": "Verde Shonen",      "color": "#10b981"},
+    {"id": "auburn",        "name": "Castaño Rojizo",    "color": "#a84c38"},
+    {"id": "blonde",        "name": "Rubio Arena",       "color": "#ead2a2"},
+    {"id": "gold",          "name": "Rubio Dorado",      "color": "#e5b23a"},
+    {"id": "ginger",        "name": "Cobrizo Vivo",      "color": "#d95d2b"},
+    {"id": "navy",          "name": "Azul Noche",        "color": "#3d4a6b"},
+    {"id": "silver",        "name": "Plata / Blanco",    "color": "#cbd5e1"},
+    {"id": "crimson",       "name": "Carmesí",           "color": "#b91c1c"},
+    {"id": "violet",        "name": "Violeta",           "color": "#7e22ce"},
+    {"id": "mint",          "name": "Esmeralda",         "color": "#0d9488"},
 ]
 
 TORSO_STYLES = [
-    {"id": "adventurer_tunic", "name": "Túnica Aventurero con Correa"},
-    {"id": "samurai_haori",    "name": "Kimono / Haori Ronin"},
-    {"id": "bare_warrior",     "name": "Torso Atlético Guerrero"},
-    {"id": "knight_plate",     "name": "Armadura de Caballero"},
-    {"id": "shinobi_wrap",     "name": "Túnica Shinobi / Ninja"},
-    {"id": "cyber_jacket",     "name": "Chaqueta Cyber / Tech"},
-    {"id": "mage_robe",        "name": "Túnica de Mago con Broche"},
-    {"id": "trench_coat",      "name": "Gabardina con Cinturón"},
-    {"id": "leather_vest",     "name": "Chaleco de Cuero y Hebillas"},
-    {"id": "suit_tie",         "name": "Traje Formal y Corbata"},
-    {"id": "hoodie",           "name": "Polerón / Hoodie Urbano"},
+    {"id": "suit_tie",         "name": "Traje y Corbata"},
+    {"id": "blazer_open",      "name": "Blazer Abierto"},
+    {"id": "hoodie",           "name": "Polerón / Hoodie"},
+    {"id": "shirt_collar",     "name": "Camisa de Oficina"},
+    {"id": "sweater_vneck",    "name": "Suéter Cuello V"},
     {"id": "vest_shirt",       "name": "Chaleco y Camisa"},
-    {"id": "varsity_jacket",   "name": "Chaqueta Universitaria"},
+    {"id": "tshirt_casual",    "name": "Camiseta Casual"},
+    {"id": "striped_shirt",    "name": "Camiseta a Rayas"},
+    {"id": "cardigan",         "name": "Cárdigan con Botones"},
+    {"id": "tech_jacket",      "name": "Chaqueta Tech"},
     {"id": "lab_coat",         "name": "Bata de Laboratorio"},
-    {"id": "tshirt_casual",    "name": "Camiseta con Pliegues"},
-    {"id": "striped_sweater",  "name": "Suéter a Rayas"},
-    {"id": "overalls",         "name": "Overol con Tirantes"},
-    {"id": "tank_top",         "name": "Deportivo Sin Mangas"},
+    {"id": "overalls",         "name": "Overol Creativo"},
+    {"id": "gakuran",          "name": "Uniforme Gakuran Anime"},
+    {"id": "sailor_fuku",      "name": "Uniforme Sailor Anime"},
+    {"id": "haori_kimono",     "name": "Haori / Kimono Anime"},
+    {"id": "shinobi_vest",     "name": "Chaleco Shinobi"},
+    {"id": "akatsuki_cloak",   "name": "Túnica Cuello Alto"},
+    {"id": "techwear_coat",    "name": "Chaqueta Techwear Cyber"},
+    {"id": "bomber_anime",     "name": "Bomber Urbana Anime"},
+    {"id": "mage_coat",        "name": "Abrigo Hechicero"},
+    {"id": "oversized_hoodie", "name": "Hoodie Streetwear"},
+    {"id": "trench_detective", "name": "Gabardina Detective"},
 ]
 
 # Alias de compatibilidad hacia atrás
 OUTFIT_STYLES = TORSO_STYLES
 
 PANTS_STYLES = [
-    {"id": "adventurer_breeches", "name": "Bombachos de Aventurero"},
-    {"id": "samurai_hakama",      "name": "Hakama Plisado Ronin"},
-    {"id": "martial_baggy",       "name": "Pantalón Holgado Combate"},
-    {"id": "slim_jeans",          "name": "Jeans / Pantalón Ajustado"},
-    {"id": "cargo_tactical",      "name": "Pantalón Cargo Táctico"},
-    {"id": "armored_cuisses",     "name": "Armadura de Piernas"},
-    {"id": "kusazuri_plates",     "name": "Faldón Samurái con Placas"},
-    {"id": "cyber_pants",         "name": "Pantalón Cyber Neón"},
-    {"id": "pleated_skirt",       "name": "Falda Plisada"},
-    {"id": "mage_skirt",          "name": "Faldón de Túnica Mágica"},
-    {"id": "dress_trousers",      "name": "Pantalón Formal con Pinza"},
-    {"id": "battle_shorts",       "name": "Shorts de Combate"},
+    {"id": "dress_pants",   "name": "Pantalón Formal"},
+    {"id": "jeans",         "name": "Jeans Clásicos"},
+    {"id": "chinos",        "name": "Pantalón Chino"},
+    {"id": "pleated_skirt", "name": "Falda Plisada"},
+    {"id": "shorts",        "name": "Shorts Casuales"},
+    {"id": "cargo",         "name": "Pantalón Cargo"},
 ]
 
 SHOE_STYLES = [
-    {"id": "leather_boots",  "name": "Botas Altas de Cuero"},
-    {"id": "tabi_sandals",   "name": "Tabi y Sandalias"},
-    {"id": "shin_wraps",     "name": "Vendas / Botas de Combate"},
-    {"id": "knight_greaves", "name": "Grebas Metálicas"},
-    {"id": "combat_boots",   "name": "Botas Tácticas con Cordones"},
-    {"id": "cyber_boots",    "name": "Botas Cyber Neón"},
-    {"id": "elf_boots",      "name": "Botas de Explorador"},
-    {"id": "high_tops",      "name": "Zapatillas Botín"},
-    {"id": "sneakers",       "name": "Zapatillas Urbanas"},
-    {"id": "classic",        "name": "Zapatos Clásicos"},
+    {"id": "oxfords",  "name": "Zapatos Formales"},
+    {"id": "sneakers", "name": "Zapatillas Urbanas"},
+    {"id": "loafers",  "name": "Mocasines"},
+    {"id": "boots",    "name": "Botines"},
+    {"id": "slippers", "name": "Zapatillas Cómodas"},
 ]
 
 ACCESSORY_STYLES = [
-    {"id": "none",            "name": "Ninguno"},
-    {"id": "headband",        "name": "Cinta Ninja / Guerrero"},
-    {"id": "eyepatch",        "name": "Parche de Ojo"},
-    {"id": "scarf_mask",      "name": "Pañuelo / Máscara Ninja"},
-    {"id": "oni_mask",        "name": "Máscara Oni Lateral"},
-    {"id": "glasses",         "name": "Lentes Pixel"},
-    {"id": "sunglasses",      "name": "Lentes de Sol"},
-    {"id": "cyber_visor",     "name": "Visor Futurista Neón"},
-    {"id": "headphones",      "name": "Audífonos Cyber"},
-    {"id": "aviator_goggles", "name": "Gafas de Aviador"},
-    {"id": "baseball_cap",    "name": "Gorra Urbana"},
-    {"id": "beanie",          "name": "Gorro de Lana"},
-    {"id": "fedora",          "name": "Sombrero Detective"},
-    {"id": "straw_hat",       "name": "Sombrero Ronin / Paja"},
-    {"id": "witch_hat",       "name": "Sombrero de Mago"},
-    {"id": "top_hat",         "name": "Sombrero de Copa"},
-    {"id": "viking_helmet",   "name": "Casco Vikingo"},
-    {"id": "crown",           "name": "Corona Dorada"},
-    {"id": "cat_ears",        "name": "Orejas de Gato"},
-    {"id": "halo",            "name": "Aureola Flotante"},
+    {"id": "none",             "name": "Ninguno"},
+    {"id": "glasses",          "name": "Lentes de Lectura"},
+    {"id": "sunglasses",       "name": "Lentes de Sol"},
+    {"id": "headphones",       "name": "Audífonos Estudio"},
+    {"id": "headset",          "name": "Diadema con Micrófono"},
+    {"id": "baseball_cap",     "name": "Gorra Urbana"},
+    {"id": "beanie",           "name": "Gorro de Lana"},
+    {"id": "beret",            "name": "Boina Artística"},
+    {"id": "cat_ears",         "name": "Orejas de Gato"},
+    {"id": "crown",            "name": "Corona Dorada"},
+    {"id": "bow",              "name": "Lazo en la Cabeza"},
+    {"id": "bandana",          "name": "Cinta / Bandana"},
+    {"id": "ninja_headband",   "name": "Banda Ninja Metálica"},
+    {"id": "oni_mask_side",    "name": "Máscara Kitsune Lateral"},
+    {"id": "cyber_visor",      "name": "Visor Cyber Neón"},
+    {"id": "blindfold_cool",   "name": "Venda de Ojos Anime"},
+    {"id": "eyepatch_anime",   "name": "Parche de Ojo"},
+    {"id": "fox_ears",         "name": "Orejas Kitsune / Zorro"},
+    {"id": "demon_horns",      "name": "Cuernos Oni"},
+    {"id": "halo_neon",        "name": "Aureola Flotante"},
+    {"id": "goggles_forehead", "name": "Gafas Shonen en Frente"},
+    {"id": "face_mask",        "name": "Mascarilla Urbana"},
 ]
 
 BACK_GEAR_STYLES = [
     {"id": "none",            "name": "Ninguno"},
-    {"id": "back_sword",      "name": "Espada en la Espalda"},
-    {"id": "waist_katana",    "name": "Katana en la Cintura"},
-    {"id": "back_spear",      "name": "Lanza Dorada"},
-    {"id": "dual_katanas",    "name": "Doble Katana Cruzada"},
-    {"id": "hero_cape",       "name": "Capa Larga de Héroe"},
-    {"id": "scarf_flowing",   "name": "Bufanda Larga al Viento"},
-    {"id": "adventurer_pack", "name": "Mochila de Explorador"},
-    {"id": "wizard_staff",    "name": "Báculo Arcano"},
-    {"id": "bow_quiver",      "name": "Arco y Carcaj"},
-    {"id": "round_shield",    "name": "Escudo de Guerrero"},
-    {"id": "cyber_wings",     "name": "Alas Cyber Holográficas"},
+    {"id": "backpack",        "name": "Mochila Tech"},
+    {"id": "scarf",           "name": "Bufanda Larga"},
+    {"id": "cape_mini",       "name": "Capa Ejecutiva"},
+    {"id": "lanyard",         "name": "Credencial / Lanyard"},
+    {"id": "angel_wings",     "name": "Alas Pixel"},
+    {"id": "katana_back",     "name": "Katana en Espalda"},
+    {"id": "dual_blades",     "name": "Doble Espada Cruzada"},
+    {"id": "hero_scarf_long", "name": "Bufanda Anime al Viento"},
+    {"id": "demon_wings",     "name": "Alas Oscuras"},
+    {"id": "spirit_aura",     "name": "Aura Espiritual"},
+    {"id": "guitar_case",     "name": "Guitarra en Espalda"},
 ]
 
-LEGACY_OUTFIT_MIGRATION: Dict[str, Tuple[str, str, Optional[str]]] = {
-    "suit_tie":        ("suit_tie",         "dress_trousers",      None),
-    "tshirt_jeans":    ("tshirt_casual",    "slim_jeans",          None),
-    "hoodie":          ("hoodie",           "cargo_tactical",      None),
-    "vest_shirt":      ("vest_shirt",       "dress_trousers",      None),
-    "overalls":        ("overalls",         "slim_jeans",          None),
-    "dress_skirt":     ("tshirt_casual",    "pleated_skirt",       None),
-    "cloak":           ("mage_robe",        "mage_skirt",          "hero_cape"),
-    "tank_top":        ("tank_top",         "battle_shorts",       None),
-    "cyber_jacket":    ("cyber_jacket",     "cyber_pants",         None),
-    "lab_coat":        ("lab_coat",         "dress_trousers",      None),
-    "kimono":          ("samurai_haori",    "samurai_hakama",      None),
-    "striped_sweater": ("striped_sweater",  "slim_jeans",          None),
-    "knight_armor":    ("knight_plate",     "armored_cuisses",     None),
-    "varsity_jacket":  ("varsity_jacket",   "slim_jeans",          None),
-}
+_VALID_FACES = {item["id"] for item in FACE_STYLES}
+_VALID_HAIRS = {item["id"] for item in HAIR_STYLES}
+_VALID_TORSOS = {item["id"] for item in TORSO_STYLES}
+_VALID_PANTS = {item["id"] for item in PANTS_STYLES}
+_VALID_SHOES = {item["id"] for item in SHOE_STYLES}
+_VALID_ACC = {item["id"] for item in ACCESSORY_STYLES}
+_VALID_BACK = {item["id"] for item in BACK_GEAR_STYLES}
 
-LEGACY_SHOE_MIGRATION: Dict[str, str] = {
-    "boots":   "leather_boots",
-    "sandals": "tabi_sandals",
-    "loafers": "classic",
+LEGACY_STYLE_MAP: Dict[str, Dict[str, str]] = {
+    "face_style": {
+        "determined": "classic",
+        "stoic": "focused",
+        "scarred": "focused",
+        "beard_smile": "beard",
+        "cat_smile": "cat",
+        "starry": "happy",
+        "surprised": "happy",
+    },
+    "hair_style": {
+        "warrior_messy": "spiky_tuft",
+        "ronin_swept": "side_swept",
+        "fluffy_spiky": "messy_fluffy",
+        "samurai_topknot": "top_bun",
+        "short_parted": "parted_neat",
+        "wavy_bob": "bob_cut",
+        "wolf_cut": "messy_fluffy",
+        "anime_spiky": "spiky_tuft",
+        "spiky_messy": "spiky_tuft",
+        "pigtails": "twin_buns",
+        "low_ponytail": "ponytail",
+        "braids": "long_wavy",
+        "side_shave": "buzz_short",
+        "mohawk": "spiky_tuft",
+        "flat_top": "buzz_short",
+        "receding": "parted_neat",
+    },
+    "torso_style": {
+        "adventurer_tunic": "suit_tie",
+        "samurai_haori": "cardigan",
+        "bare_warrior": "tshirt_casual",
+        "knight_plate": "tech_jacket",
+        "shinobi_wrap": "hoodie",
+        "cyber_jacket": "tech_jacket",
+        "mage_robe": "cardigan",
+        "trench_coat": "blazer_open",
+        "leather_vest": "vest_shirt",
+        "varsity_jacket": "tech_jacket",
+        "striped_sweater": "striped_shirt",
+        "tank_top": "tshirt_casual",
+        "tshirt_jeans": "tshirt_casual",
+        "dress_skirt": "tshirt_casual",
+        "cloak": "cardigan",
+        "kimono": "cardigan",
+        "knight_armor": "tech_jacket",
+    },
+    "pants_style": {
+        "adventurer_breeches": "dress_pants",
+        "samurai_hakama": "chinos",
+        "martial_baggy": "cargo",
+        "slim_jeans": "jeans",
+        "cargo_tactical": "cargo",
+        "armored_cuisses": "dress_pants",
+        "kusazuri_plates": "pleated_skirt",
+        "cyber_pants": "jeans",
+        "mage_skirt": "pleated_skirt",
+        "dress_trousers": "dress_pants",
+        "battle_shorts": "shorts",
+    },
+    "shoe_style": {
+        "leather_boots": "boots",
+        "tabi_sandals": "slippers",
+        "shin_wraps": "boots",
+        "knight_greaves": "boots",
+        "combat_boots": "boots",
+        "cyber_boots": "sneakers",
+        "elf_boots": "boots",
+        "high_tops": "sneakers",
+        "classic": "oxfords",
+        "sandals": "slippers",
+    },
+    "accessory": {
+        "headband": "bandana",
+        "eyepatch": "none",
+        "scarf_mask": "bandana",
+        "oni_mask": "none",
+        "cyber_visor": "sunglasses",
+        "aviator_goggles": "glasses",
+        "fedora": "beret",
+        "straw_hat": "beret",
+        "witch_hat": "beret",
+        "top_hat": "crown",
+        "viking_helmet": "none",
+        "halo": "crown",
+    },
+    "back_gear": {
+        "adventurer_pack": "backpack",
+        "scarf_flowing": "scarf",
+        "hero_cape": "cape_mini",
+        "cyber_wings": "angel_wings",
+    },
 }
 
 
 def normalize_character(char: Dict[str, Any]) -> Dict[str, Any]:
-    """Migra de forma transparente personajes antiguos (outfit_style) al esquema modular detallado."""
+    """Normaliza y migra personajes antiguos o incompletos al esquema Pixel Agents 16x32."""
     out = copy.deepcopy(char)
-    legacy_outfit = out.get("outfit_style", "")
-    if not out.get("torso_style") or not out.get("pants_style"):
-        mapped = LEGACY_OUTFIT_MIGRATION.get(legacy_outfit)
-        if mapped:
-            t_st, p_st, bg = mapped
-            out.setdefault("torso_style", t_st)
-            out.setdefault("pants_style", p_st)
-            if bg and not out.get("back_gear"):
-                out["back_gear"] = bg
-        else:
-            out.setdefault("torso_style", "adventurer_tunic")
-            out.setdefault("pants_style", "adventurer_breeches")
 
-    shoe = out.get("shoe_style", "leather_boots")
-    if shoe in LEGACY_SHOE_MIGRATION:
-        out["shoe_style"] = LEGACY_SHOE_MIGRATION[shoe]
-    elif not shoe:
-        out["shoe_style"] = "leather_boots"
+    if not out.get("torso_style") and out.get("outfit_style"):
+        out["torso_style"] = out["outfit_style"]
 
-    out.setdefault("eye_color", "#261a24")
-    out.setdefault("back_gear", "none")
-    out.setdefault("accessory", "none")
+    def _resolve(field: str, valid_set: Set[str], default_val: str):
+        val = out.get(field, default_val)
+        if val in valid_set:
+            return
+        mapped = LEGACY_STYLE_MAP.get(field, {}).get(val)
+        out[field] = mapped if mapped in valid_set else default_val
+
+    _resolve("face_style", _VALID_FACES, "classic")
+    _resolve("hair_style", _VALID_HAIRS, "spiky_tuft")
+    _resolve("torso_style", _VALID_TORSOS, "suit_tie")
+    _resolve("pants_style", _VALID_PANTS, "dress_pants")
+    _resolve("shoe_style", _VALID_SHOES, "oxfords")
+    _resolve("accessory", _VALID_ACC, "none")
+    _resolve("back_gear", _VALID_BACK, "none")
+
+    out.setdefault("skin_color", "#f5c59c")
+    out.setdefault("eye_color", "#18161e")
+    out.setdefault("hair_color", "#946b3e")
+    out.setdefault("top_color", "#1f6199")
+    out.setdefault("bottom_color", "#1d4e78")
+    out.setdefault("shoe_color", "#1a1e26")
     out.setdefault("accessory_color", "#d97706")
     out["outfit_style"] = out["torso_style"]
     return out
@@ -286,117 +366,191 @@ def normalize_character(char: Dict[str, Any]) -> Dict[str, Any]:
 
 DEFAULT_CHARACTERS: List[Dict[str, Any]] = [
     {
-        "id": "char-default-kael",
-        "name": "Kael",
-        "skin_color": "#f6c198",
-        "eye_color": "#261a24",
-        "face_style": "determined",
-        "hair_style": "warrior_messy",
-        "hair_color": "#4b352a",
-        "torso_style": "adventurer_tunic",
-        "outfit_style": "adventurer_tunic",
-        "top_color": "#585358",
-        "pants_style": "adventurer_breeches",
-        "bottom_color": "#2b3a55",
-        "shoe_style": "leather_boots",
-        "shoe_color": "#3d261f",
+        "id": "char-pa-alex",
+        "name": "Alex",
+        "skin_color": "#f5c59c",
+        "eye_color": "#18161e",
+        "face_style": "classic",
+        "hair_style": "spiky_tuft",
+        "hair_color": "#946b3e",
+        "torso_style": "suit_tie",
+        "outfit_style": "suit_tie",
+        "top_color": "#1f6199",
+        "pants_style": "dress_pants",
+        "bottom_color": "#1d4e78",
+        "shoe_style": "oxfords",
+        "shoe_color": "#1a1e26",
         "accessory": "none",
-        "accessory_color": "#d99b26",
-        "back_gear": "back_sword",
+        "accessory_color": "#d97706",
+        "back_gear": "none",
     },
     {
-        "id": "char-default-ren",
-        "name": "Ren",
-        "skin_color": "#f6c198",
-        "eye_color": "#261a24",
-        "face_style": "stoic",
-        "hair_style": "ronin_swept",
-        "hair_color": "#3d4a6b",
-        "torso_style": "samurai_haori",
-        "outfit_style": "samurai_haori",
-        "top_color": "#343b59",
-        "pants_style": "samurai_hakama",
-        "bottom_color": "#a89282",
-        "shoe_style": "tabi_sandals",
-        "shoe_color": "#e2e8f0",
-        "accessory": "none",
-        "accessory_color": "#7f1d1d",
-        "back_gear": "waist_katana",
-    },
-    {
-        "id": "char-default-sora",
-        "name": "Sora",
-        "skin_color": "#f6c198",
-        "eye_color": "#d97706",
-        "face_style": "determined",
-        "hair_style": "fluffy_spiky",
-        "hair_color": "#ead2a2",
-        "torso_style": "bare_warrior",
-        "outfit_style": "bare_warrior",
-        "top_color": "#f6c198",
-        "pants_style": "martial_baggy",
-        "bottom_color": "#26232b",
-        "shoe_style": "shin_wraps",
-        "shoe_color": "#7c1d2e",
-        "accessory": "none",
-        "accessory_color": "#eab308",
-        "back_gear": "back_spear",
-    },
-    {
-        "id": "char-default-sofia",
+        "id": "char-pa-sofia",
         "name": "Sofía",
         "skin_color": "#fce0c8",
-        "eye_color": "#06b6d4",
-        "face_style": "smile",
-        "hair_style": "ponytail",
+        "eye_color": "#18161e",
+        "face_style": "happy",
+        "hair_style": "bob_cut",
         "hair_color": "#a84c38",
-        "torso_style": "cyber_jacket",
-        "outfit_style": "cyber_jacket",
-        "top_color": "#1e3a5f",
+        "torso_style": "cardigan",
+        "outfit_style": "cardigan",
+        "top_color": "#942c4f",
         "pants_style": "pleated_skirt",
         "bottom_color": "#334155",
-        "shoe_style": "cyber_boots",
-        "shoe_color": "#1e293b",
+        "shoe_style": "loafers",
+        "shoe_color": "#3d261f",
+        "accessory": "glasses",
+        "accessory_color": "#d97706",
+        "back_gear": "none",
+    },
+    {
+        "id": "char-pa-mateo",
+        "name": "Mateo",
+        "skin_color": "#e5a370",
+        "eye_color": "#18161e",
+        "face_style": "focused",
+        "hair_style": "parted_neat",
+        "hair_color": "#262a34",
+        "torso_style": "hoodie",
+        "outfit_style": "hoodie",
+        "top_color": "#2a7a64",
+        "pants_style": "jeans",
+        "bottom_color": "#2b3a55",
+        "shoe_style": "sneakers",
+        "shoe_color": "#e2e8f0",
         "accessory": "headphones",
         "accessory_color": "#38bdf8",
-        "back_gear": "scarf_flowing",
+        "back_gear": "none",
+    },
+    {
+        "id": "char-pa-luna",
+        "name": "Luna",
+        "skin_color": "#f5c59c",
+        "eye_color": "#7c3aed",
+        "face_style": "smile",
+        "hair_style": "ponytail",
+        "hair_color": "#ead2a2",
+        "torso_style": "blazer_open",
+        "outfit_style": "blazer_open",
+        "top_color": "#3d4a6b",
+        "pants_style": "chinos",
+        "bottom_color": "#a89282",
+        "shoe_style": "oxfords",
+        "shoe_color": "#3d261f",
+        "accessory": "none",
+        "accessory_color": "#e879f9",
+        "back_gear": "lanyard",
+    },
+    {
+        "id": "char-pa-diego",
+        "name": "Diego",
+        "skin_color": "#9d5d36",
+        "eye_color": "#18161e",
+        "face_style": "beard",
+        "hair_style": "curly_afro",
+        "hair_color": "#262a34",
+        "torso_style": "vest_shirt",
+        "outfit_style": "vest_shirt",
+        "top_color": "#78350f",
+        "pants_style": "dress_pants",
+        "bottom_color": "#1e293b",
+        "shoe_style": "boots",
+        "shoe_color": "#3d261f",
+        "accessory": "none",
+        "accessory_color": "#d97706",
+        "back_gear": "none",
+    },
+    {
+        "id": "char-pa-valentina",
+        "name": "Valentina",
+        "skin_color": "#d49c6e",
+        "eye_color": "#0891b2",
+        "face_style": "cool",
+        "hair_style": "long_wavy",
+        "hair_color": "#4b352a",
+        "torso_style": "sweater_vneck",
+        "outfit_style": "sweater_vneck",
+        "top_color": "#0e7490",
+        "pants_style": "jeans",
+        "bottom_color": "#1d4e78",
+        "shoe_style": "sneakers",
+        "shoe_color": "#1e293b",
+        "accessory": "beret",
+        "accessory_color": "#942c4f",
+        "back_gear": "none",
+    },
+    {
+        "id": "char-pa-kaito",
+        "name": "Kaito",
+        "skin_color": "#fce0c8",
+        "eye_color": "#0891b2",
+        "face_style": "anime_smirk",
+        "hair_style": "gojo_swept",
+        "hair_color": "#eef2ff",
+        "torso_style": "techwear_coat",
+        "outfit_style": "techwear_coat",
+        "top_color": "#1e293b",
+        "pants_style": "jeans",
+        "bottom_color": "#0f172a",
+        "shoe_style": "sneakers",
+        "shoe_color": "#1a1e26",
+        "accessory": "cyber_visor",
+        "accessory_color": "#38bdf8",
+        "back_gear": "katana_back",
+    },
+    {
+        "id": "char-pa-sakura",
+        "name": "Sakura",
+        "skin_color": "#fce0c8",
+        "eye_color": "#dc2626",
+        "face_style": "anime_starry",
+        "hair_style": "twintails_long",
+        "hair_color": "#f472b6",
+        "torso_style": "sailor_fuku",
+        "outfit_style": "sailor_fuku",
+        "top_color": "#1d4e78",
+        "pants_style": "pleated_skirt",
+        "bottom_color": "#1e293b",
+        "shoe_style": "loafers",
+        "shoe_color": "#3d261f",
+        "accessory": "fox_ears",
+        "accessory_color": "#f472b6",
+        "back_gear": "hero_scarf_long",
     },
 ]
 
 
 # =============================================================================
-# MATERIALES DE PISO Y PARED POR CUADRÍCULA (32x32)
+# MATERIALES DE PISO Y PARED POR CUADRÍCULA (16x16 NATIVO -> 32x32)
 # =============================================================================
 FLOOR_MATERIALS: Dict[str, Dict[str, str]] = {
-    "oak_wood":      {"name": "Madera Roble",       "colorA": "#4a3222", "colorB": "#3d281b", "pattern": "planks"},
-    "walnut_wood":   {"name": "Madera Nogal",       "colorA": "#2d201a", "colorB": "#241914", "pattern": "planks"},
-    "parquet_gold":  {"name": "Parquet Dorado",     "colorA": "#5c3d24", "colorB": "#4d321c", "pattern": "checkers"},
-    "navy_carpet":   {"name": "Alfombra Azul",      "colorA": "#162436", "colorB": "#131e2e", "pattern": "grid"},
-    "emerald_tile":  {"name": "Baldosa Esmeralda",  "colorA": "#132620", "colorB": "#0f1e1a", "pattern": "tiles"},
-    "metal_grate":   {"name": "Metal Industrial",   "colorA": "#1e242e", "colorB": "#171c24", "pattern": "grate"},
-    "cyber_grid":    {"name": "Cyber Grid Cyan",    "colorA": "#112430", "colorB": "#0d1c26", "pattern": "grid"},
-    "amber_tech":    {"name": "Hex Tech Ámbar",     "colorA": "#261e13", "colorB": "#1f180f", "pattern": "tiles"},
-    "studio_purple": {"name": "Estudio Violeta",    "colorA": "#241730", "colorB": "#1d1226", "pattern": "checkers"},
-    "cafe_warm":     {"name": "Cerámica Cafetería", "colorA": "#2e1d24", "colorB": "#25171d", "pattern": "checkers"},
-    "marble_slate":  {"name": "Pasillo Pizarra",    "colorA": "#1a2232", "colorB": "#161d2b", "pattern": "tiles"},
-    "marble_white":  {"name": "Mármol Claro",       "colorA": "#475569", "colorB": "#3b4759", "pattern": "tiles"},
+    "cream_tile":    {"name": "Beige Oficina",       "colorA": "#ddd0b6", "colorB": "#c9b899", "grout": "#a89070", "pattern": "office_tile"},
+    "oak_wood":      {"name": "Madera Roble",        "colorA": "#b8844f", "colorB": "#9e6b3b", "grout": "#784d27", "pattern": "planks"},
+    "walnut_wood":   {"name": "Madera Nogal",        "colorA": "#7d522c", "colorB": "#684222", "grout": "#452a18", "pattern": "planks"},
+    "parquet_gold":  {"name": "Parquet Cálido",      "colorA": "#c4925c", "colorB": "#a67443", "grout": "#7d522c", "pattern": "checkers"},
+    "red_carpet":    {"name": "Alfombra Carmesí",    "colorA": "#a31c24", "colorB": "#8b161d", "grout": "#6d1016", "pattern": "carpet"},
+    "navy_carpet":   {"name": "Alfombra Azul",       "colorA": "#26415c", "colorB": "#20374f", "grout": "#17293b", "pattern": "carpet"},
+    "emerald_tile":  {"name": "Baldosa Salvia",      "colorA": "#a8c4b0", "colorB": "#93b29c", "grout": "#6e8d78", "pattern": "office_tile"},
+    "metal_grate":   {"name": "Piso Técnico",        "colorA": "#5b6778", "colorB": "#485363", "grout": "#2f3845", "pattern": "grate"},
+    "cyber_grid":    {"name": "Pizarra Azul",        "colorA": "#7892a8", "colorB": "#667f94", "grout": "#4a5f72", "pattern": "office_tile"},
+    "amber_tech":    {"name": "Terracota Suave",     "colorA": "#cfa783", "colorB": "#bc916b", "grout": "#966f4d", "pattern": "office_tile"},
+    "studio_purple": {"name": "Baldosa Lavanda",     "colorA": "#b4a6c9", "colorB": "#9f90b5", "grout": "#7a6c91", "pattern": "checkers"},
+    "cafe_warm":     {"name": "Cerámica Café",       "colorA": "#d4beaa", "colorB": "#bfa48c", "grout": "#997d65", "pattern": "checkers"},
+    "marble_slate":  {"name": "Baldosa Gris",        "colorA": "#9fa8b8", "colorB": "#8a94a6", "grout": "#687285", "pattern": "office_tile"},
+    "marble_white":  {"name": "Mármol Crema",        "colorA": "#ece4d3", "colorB": "#ded3be", "grout": "#b8ab94", "pattern": "office_tile"},
 }
 
 WALL_MATERIALS: Dict[str, Dict[str, str]] = {
-    "dark_tech":  {"name": "Muro Tech Oscuro",   "top": "#334155", "front": "#1e293b", "border": "#475569"},
-    "brick_wall": {"name": "Pared de Ladrillo",  "top": "#7c2d12", "front": "#5c210d", "border": "#9a3412"},
-    "wood_panel": {"name": "Tabique de Madera",  "top": "#78350f", "front": "#451a03", "border": "#92400e"},
-    "glass_wall": {"name": "División Cristal",   "top": "#38bdf8", "front": "#0284c7", "border": "#7dd3fc"},
-    "cyber_neon": {"name": "Muro Cyber Neon",    "top": "#a855f7", "front": "#581c87", "border": "#d8b4fe"},
+    "dark_tech":  {"name": "Muro Teal Oficina",  "top": "#1e4255", "front": "#45738c", "trim": "#2c4e61", "border": "#131820"},
+    "brick_wall": {"name": "Pared de Ladrillo",  "top": "#5c261c", "front": "#964433", "trim": "#6e2e22", "border": "#261310"},
+    "wood_panel": {"name": "Tabique de Madera",  "top": "#52321b", "front": "#8a5832", "trim": "#663e22", "border": "#24150c"},
+    "glass_wall": {"name": "División Cristal",   "top": "#2d5f78", "front": "#78bdd6", "trim": "#4e92ab", "border": "#182c38"},
+    "cyber_neon": {"name": "Muro Crema Oficina", "top": "#59554d", "front": "#b8b09c", "trim": "#8c8472", "border": "#24211c"},
 }
 
 
 # =============================================================================
 # CATÁLOGO UNIFICADO POR CATEGORÍAS (TAMAÑOS EN CUADRÍCULAS tile_w x tile_h)
-# Categorías:
-#   - "devices":     Dispositivos tecnológicos e interactivos
-#   - "furniture":   Muebles de oficina, estanterías, sofás y mesas
-#   - "decorations": Plantas, alfombras, máquinas y accesorios
 # =============================================================================
 OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
     # --- CATEGORÍA 1: DISPOSITIVOS ---
@@ -404,7 +558,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "computer_desk",
         "category": "devices",
         "station": "coding_desk",
-        "name": "Computador Dual (PC)",
+        "name": "Escritorio PC Retro",
         "icon": "💻",
         "tile_w": 2,
         "tile_h": 1,
@@ -416,7 +570,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "laptop_desk",
         "category": "devices",
         "station": "coding_desk",
-        "name": "Laptop Compacta",
+        "name": "Escritorio Compacto PC",
         "icon": "💻",
         "tile_w": 1,
         "tile_h": 1,
@@ -428,7 +582,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "server_terminal",
         "category": "devices",
         "station": "server_lab",
-        "name": "Servidor / Terminal",
+        "name": "Estación Terminal / Rack",
         "icon": "⚡",
         "tile_w": 2,
         "tile_h": 1,
@@ -440,7 +594,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "whiteboard",
         "category": "devices",
         "station": "strategy_board",
-        "name": "Pizarra Estrategia",
+        "name": "Pizarra de Estrategia",
         "icon": "💭",
         "tile_w": 3,
         "tile_h": 1,
@@ -452,7 +606,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "orchestrator_core",
         "category": "devices",
         "station": "orchestrator_hub",
-        "name": "Núcleo Orchestrator",
+        "name": "Mesa Mando Orchestrator",
         "icon": "🎛️",
         "tile_w": 2,
         "tile_h": 2,
@@ -464,7 +618,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "web_radar",
         "category": "devices",
         "station": "web_station",
-        "name": "Cabina Web / Radar",
+        "name": "Estación Web Dual",
         "icon": "🌐",
         "tile_w": 2,
         "tile_h": 1,
@@ -476,7 +630,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "art_easel",
         "category": "devices",
         "station": "art_studio",
-        "name": "Mesa Estudio UI",
+        "name": "Mesa Estudio Diseño",
         "icon": "🎨",
         "tile_w": 2,
         "tile_h": 1,
@@ -514,7 +668,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "coffee_sofa",
         "category": "furniture",
         "station": "lounge",
-        "name": "Sofá Lounge Rojo",
+        "name": "Sofá Lounge Carmesí",
         "icon": "🛋️",
         "tile_w": 2,
         "tile_h": 1,
@@ -538,7 +692,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "office_chair",
         "category": "furniture",
         "station": None,
-        "name": "Silla de Oficina Giratoria",
+        "name": "Silla de Madera",
         "icon": "🪑",
         "tile_w": 1,
         "tile_h": 1,
@@ -548,7 +702,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "gaming_chair",
         "category": "furniture",
         "station": None,
-        "name": "Silla Gamer Ergonómica",
+        "name": "Silla Giratoria",
         "icon": "💺",
         "tile_w": 1,
         "tile_h": 1,
@@ -566,11 +720,21 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "seat_cell": (0, 1, "up"),
         "collab_cells": [(1, 1, "left"), (-1, 1, "right")],
     },
+    "coffee_table": {
+        "type": "coffee_table",
+        "category": "furniture",
+        "station": None,
+        "name": "Mesa de Centro",
+        "icon": "🪵",
+        "tile_w": 2,
+        "tile_h": 2,
+        "blocking": True,
+    },
     "reading_table": {
         "type": "reading_table",
         "category": "furniture",
         "station": None,
-        "name": "Mesa de Lectura",
+        "name": "Mesa de Madera",
         "icon": "🪑",
         "tile_w": 2,
         "tile_h": 1,
@@ -602,7 +766,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "plant_monstera",
         "category": "decorations",
         "station": None,
-        "name": "Planta Monstera",
+        "name": "Planta de Interior",
         "icon": "🪴",
         "tile_w": 1,
         "tile_h": 1,
@@ -612,11 +776,41 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "plant_cactus",
         "category": "decorations",
         "station": None,
-        "name": "Cactus Pixel",
-        "icon": "🌵",
+        "name": "Planta Espada",
+        "icon": "🌿",
         "tile_w": 1,
         "tile_h": 1,
         "blocking": True,
+    },
+    "trash_bin": {
+        "type": "trash_bin",
+        "category": "decorations",
+        "station": None,
+        "name": "Papelera Oficina",
+        "icon": "🗑️",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "wall_painting": {
+        "type": "wall_painting",
+        "category": "decorations",
+        "station": None,
+        "name": "Cuadro Paisaje",
+        "icon": "🖼️",
+        "tile_w": 2,
+        "tile_h": 1,
+        "blocking": True,
+    },
+    "wall_clock": {
+        "type": "wall_clock",
+        "category": "decorations",
+        "station": None,
+        "name": "Reloj de Pared",
+        "icon": "🕒",
+        "tile_w": 1,
+        "tile_h": 1,
+        "blocking": False,
     },
     "arcade_machine": {
         "type": "arcade_machine",
@@ -632,7 +826,7 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "water_cooler",
         "category": "decorations",
         "station": None,
-        "name": "Dispensador Agua",
+        "name": "Dispensador de Agua",
         "icon": "🚰",
         "tile_w": 1,
         "tile_h": 1,
@@ -642,17 +836,27 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "rug_persian",
         "category": "decorations",
         "station": None,
-        "name": "Alfombra Persa",
+        "name": "Alfombra Carmesí (3x2)",
         "icon": "🟥",
         "tile_w": 3,
         "tile_h": 2,
-        "blocking": False,  # Las alfombras se pueden pisar
+        "blocking": False,
+    },
+    "rug_lounge": {
+        "type": "rug_lounge",
+        "category": "decorations",
+        "station": None,
+        "name": "Alfombra Lounge Grande (5x4)",
+        "icon": "🟥",
+        "tile_w": 5,
+        "tile_h": 4,
+        "blocking": False,
     },
     "rug_cyber": {
         "type": "rug_cyber",
         "category": "decorations",
         "station": None,
-        "name": "Alfombra Cyber",
+        "name": "Alfombra Azul",
         "icon": "💠",
         "tile_w": 3,
         "tile_h": 2,
@@ -683,112 +887,114 @@ OBJECT_CATALOG: Dict[str, Dict[str, Any]] = {
 # Reglas mínimas por estación de actividad para que los agentes siempre tengan dónde interactuar
 REQUIRED_STATIONS: Dict[str, str] = {
     "coding_desk":      "Computador (PC o Laptop)",
-    "library":          "Mueble de Libros / Estantería",
-    "server_lab":       "Servidor / Terminal",
-    "strategy_board":   "Pizarra Estrategia",
-    "orchestrator_hub": "Núcleo Orchestrator",
-    "web_station":      "Cabina Web / Radar",
-    "art_studio":       "Mesa Estudio UI",
+    "library":          "Estantería de Libros",
+    "server_lab":       "Estación Terminal / Rack",
+    "strategy_board":   "Pizarra de Estrategia",
+    "orchestrator_hub": "Mesa Mando Orchestrator",
+    "web_station":      "Estación Web Dual",
+    "art_studio":       "Mesa Estudio Diseño",
     "lounge":           "Sofá o Barra de Cafetería",
 }
 
 
 def build_default_office_layout() -> Dict[str, Any]:
     """
-    Construye el mapa por defecto en una cuadrícula exacta de 32x19 celdas (32x32 px cada una).
-    Incluye 8 salas con sus pisos, muros divisorios con puertas abiertas al corredor central (filas 8..9),
-    dispositivos interactivos, muebles y decoración.
+    Construye el mapa por defecto en una cuadrícula exacta de 32x19 celdas (32x32 px)
+    inspirado directamente en la estética Pixel Agents:
+      - Piso beige/crema cálido con juntas limpias
+      - Paredes perimetrales teal arquitectónicas y divisiones con puertas amplias
+      - Sala Lounge con alfombra carmesí, sofás rosado-burdeos y mesa de centro
+      - Islas de escritorios de madera con PCs retro CRT, sillas de madera y tazas
+      - Libreros coloridos, pizarras, reloj de pared, cuadro paisaje y plantas
     """
-    floor_grid = [["marble_slate" for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
+    floor_grid = [["cream_tile" for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
     wall_grid: List[List[Optional[str]]] = [[None for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
 
-    #Definir zonas superiores (filas 0..7) e inferiores (filas 10..18)
-    top_zones = [
-        (0, 7,   "walnut_wood",   3),  # Biblioteca (cols 0..7, puerta en col 3..4)
-        (8, 15,  "navy_carpet",   11), # Estrategia (cols 8..15, puerta en col 11..12)
-        (16, 23, "amber_tech",    19), # Orchestrator (cols 16..23, puerta en col 19..20)
-        (24, 31, "cyber_grid",    27), # Cabina Web (cols 24..31, puerta en col 27..28)
-    ]
-    bot_zones = [
-        (0, 10,  "emerald_tile",  5),  # Computadores (cols 0..10, puerta en col 5..6)
-        (11, 17, "metal_grate",   14), # Terminal Lab (cols 11..17, puerta en col 14..15)
-        (18, 22, "studio_purple", 20), # Estudio UI (cols 18..22, puerta en col 20)
-        (23, 31, "cafe_warm",     27), # Cafetería (cols 23..31, puerta en col 27..28)
-    ]
+    # Pisos cálidos por zona para dar lectura espacial clara sin romper la armonía
+    for r in range(1, 7):
+        for c in range(1, 8):
+            floor_grid[r][c] = "oak_wood"      # Biblioteca (arriba-izquierda)
+        for c in range(23, 31):
+            floor_grid[r][c] = "cyber_grid"    # Cabina Web & Terminal (arriba-derecha)
+    for r in range(12, 18):
+        for c in range(1, 7):
+            floor_grid[r][c] = "oak_wood"      # Estudio Diseño (abajo-izquierda)
 
-    for c0, c1, mat, door_c in top_zones:
-        for r in range(0, 8):
-            for c in range(c0, c1 + 1):
-                floor_grid[r][c] = mat
-        # Muro horizontal en fila 7 (con abertura de puerta de 2 celdas)
-        for c in range(c0, c1 + 1):
-            if c not in (door_c, door_c + 1):
-                wall_grid[7][c] = "dark_tech"
-        # Muro vertical derecho entre salas
-        if c1 < GRID_COLS - 1:
-            for r in range(0, 8):
-                wall_grid[r][c1] = "dark_tech"
+    # Paredes perimetrales (estilo Pixel Agents)
+    for c in range(GRID_COLS):
+        wall_grid[0][c] = "dark_tech"
+        wall_grid[GRID_ROWS - 1][c] = "dark_tech"
+    for r in range(GRID_ROWS):
+        wall_grid[r][0] = "dark_tech"
+        wall_grid[r][GRID_COLS - 1] = "dark_tech"
 
-    for c0, c1, mat, door_c in bot_zones:
-        for r in range(10, GRID_ROWS):
-            for c in range(c0, c1 + 1):
-                floor_grid[r][c] = mat
-        # Muro horizontal en fila 10 (con abertura de puerta)
-        for c in range(c0, c1 + 1):
-            if c not in (door_c, door_c + 1):
-                wall_grid[10][c] = "dark_tech"
-        if c1 < GRID_COLS - 1:
-            for r in range(10, GRID_ROWS):
-                wall_grid[r][c1] = "dark_tech"
+    # Nicho arquitectónico superior izquierdo para separar Biblioteca de Estrategia
+    for r in range(1, 5):
+        wall_grid[r][8] = "dark_tech"
+    # Pared separadora parcial en el ala derecha superior
+    for r in range(1, 4):
+        wall_grid[r][22] = "dark_tech"
+    # Ala inferior izquierda (Estudio UI) con abertura amplia
+    for r in range(13, 18):
+        wall_grid[r][7] = "dark_tech"
 
     items = [
-        # Biblioteca (cols 0..6, rows 1..6)
+        # --- BIBLIOTECA (arriba-izquierda, cols 1..7) ---
         {"id": "obj-lib-1", "type": "bookshelf",       "col": 1,  "row": 1},
-        {"id": "obj-lib-2", "type": "bookshelf",       "col": 4,  "row": 1},
-        {"id": "obj-lib-3", "type": "reading_table",   "col": 2,  "row": 4},
-        {"id": "obj-lib-5", "type": "office_chair",    "col": 2,  "row": 5},
-        {"id": "obj-lib-6", "type": "office_chair",    "col": 3,  "row": 5},
-        {"id": "obj-lib-4", "type": "plant_monstera",  "col": 0,  "row": 6},
+        {"id": "obj-lib-2", "type": "bookshelf",       "col": 3,  "row": 1},
+        {"id": "obj-lib-3", "type": "bookshelf_single","col": 5,  "row": 1},
+        {"id": "obj-lib-4", "type": "plant_monstera",  "col": 7,  "row": 1},
+        {"id": "obj-lib-5", "type": "reading_table",   "col": 2,  "row": 4},
+        {"id": "obj-lib-6", "type": "office_chair",    "col": 2,  "row": 5},
+        {"id": "obj-lib-7", "type": "office_chair",    "col": 3,  "row": 5},
 
-        # Estrategia (cols 8..14, rows 1..6)
-        {"id": "obj-str-1", "type": "whiteboard",      "col": 10, "row": 1},
-        {"id": "obj-str-2", "type": "rug_cyber",       "col": 10, "row": 4},
+        # --- ESTRATEGIA & ORCHESTRATOR (arriba-centro, cols 9..21) ---
+        {"id": "obj-str-1", "type": "whiteboard",        "col": 10, "row": 1},
+        {"id": "obj-clk-1", "type": "wall_clock",        "col": 13, "row": 0},
+        {"id": "obj-str-2", "type": "whiteboard",        "col": 14, "row": 1},
+        {"id": "obj-pnt-1", "type": "wall_painting",     "col": 18, "row": 1},
+        {"id": "obj-orc-1", "type": "orchestrator_core", "col": 18, "row": 4},
+        {"id": "obj-orc-2", "type": "plant_monstera",    "col": 21, "row": 1},
 
-        # Orchestrator (cols 16..22, rows 1..6)
-        {"id": "obj-orc-1", "type": "orchestrator_core", "col": 18, "row": 2},
-        {"id": "obj-orc-2", "type": "floor_lamp",        "col": 16, "row": 1},
+        # --- CABINA WEB & TERMINAL LAB (arriba-derecha, cols 23..30) ---
+        {"id": "obj-web-1", "type": "web_radar",       "col": 23, "row": 1},
+        {"id": "obj-web-2", "type": "web_radar",       "col": 26, "row": 1},
+        {"id": "obj-srv-1", "type": "server_terminal", "col": 24, "row": 4},
+        {"id": "obj-srv-2", "type": "server_terminal", "col": 28, "row": 4},
+        {"id": "obj-srv-3", "type": "plant_cactus",    "col": 30, "row": 1},
 
-        # Cabina Web (cols 24..30, rows 1..6)
-        {"id": "obj-web-1", "type": "web_radar",       "col": 25, "row": 1},
-        {"id": "obj-web-2", "type": "web_radar",       "col": 28, "row": 1},
+        # --- LOUNGE / CAFETERÍA CENTRAL (alfombra carmesí continua + sofás burdeos, cols 3..7, rows 7..10) ---
+        {"id": "obj-lng-r1", "type": "rug_lounge",      "col": 3,  "row": 7},
+        {"id": "obj-lng-s1", "type": "coffee_sofa",     "col": 4,  "row": 7},
+        {"id": "obj-lng-t1", "type": "coffee_table",    "col": 4,  "row": 8},
+        {"id": "obj-lng-s2", "type": "coffee_sofa",     "col": 4,  "row": 10},
+        {"id": "obj-lng-a1", "type": "lounge_armchair", "col": 7,  "row": 8},
+        {"id": "obj-lng-b1", "type": "coffee_bar",      "col": 1,  "row": 7},
+        {"id": "obj-lng-w1", "type": "water_cooler",    "col": 1,  "row": 9},
 
-        # Sala de Computadores (cols 0..9, rows 11..17)
-        {"id": "obj-pc-1",  "type": "computer_desk",   "col": 1,  "row": 12},
-        {"id": "obj-pc-2",  "type": "computer_desk",   "col": 6,  "row": 12},
-        {"id": "obj-pc-3",  "type": "computer_desk",   "col": 1,  "row": 15},
-        {"id": "obj-pc-4",  "type": "computer_desk",   "col": 6,  "row": 15},
-        {"id": "obj-pc-5",  "type": "plant_cactus",    "col": 9,  "row": 11},
+        # --- COMPUTADORES / WORKSTATIONS (centro y derecha, cols 11..30, rows 9..17) ---
+        {"id": "obj-pc-1", "type": "computer_desk", "col": 12, "row": 10},
+        {"id": "obj-pc-2", "type": "computer_desk", "col": 16, "row": 10},
+        {"id": "obj-pc-3", "type": "computer_desk", "col": 12, "row": 14},
+        {"id": "obj-pc-4", "type": "computer_desk", "col": 16, "row": 14},
+        {"id": "obj-pc-5", "type": "computer_desk", "col": 23, "row": 10},
+        {"id": "obj-pc-6", "type": "laptop_desk",   "col": 27, "row": 10},
+        {"id": "obj-pc-7", "type": "computer_desk", "col": 24, "row": 14},
+        {"id": "obj-mtg-1","type": "meeting_table", "col": 27, "row": 14},
+        {"id": "obj-dec-1","type": "plant_cactus",  "col": 30, "row": 9},
+        {"id": "obj-dec-2","type": "plant_monstera","col": 21, "row": 12},
+        {"id": "obj-dec-3","type": "trash_bin",     "col": 10, "row": 16},
 
-        # Terminal Lab (cols 11..16, rows 11..17)
-        {"id": "obj-srv-1", "type": "server_terminal", "col": 12, "row": 12},
-        {"id": "obj-srv-2", "type": "server_terminal", "col": 14, "row": 15},
-
-        # Estudio UI (cols 18..21, rows 11..17)
-        {"id": "obj-art-1", "type": "art_easel",       "col": 19, "row": 13},
-        {"id": "obj-art-2", "type": "trophy",          "col": 18, "row": 11},
-
-        # Cafetería & Lounge (cols 23..31, rows 11..17) — Sofás y sillón primero para que los agentes se sienten con café
-        {"id": "obj-lng-4", "type": "coffee_sofa",     "col": 24, "row": 15},
-        {"id": "obj-lng-7", "type": "lounge_armchair", "col": 27, "row": 13},
-        {"id": "obj-lng-5", "type": "coffee_sofa",     "col": 28, "row": 15},
-        {"id": "obj-lng-1", "type": "coffee_bar",      "col": 24, "row": 11},
-        {"id": "obj-lng-2", "type": "water_cooler",    "col": 29, "row": 11},
-        {"id": "obj-lng-3", "type": "arcade_machine",  "col": 30, "row": 11},
-        {"id": "obj-lng-6", "type": "rug_persian",     "col": 25, "row": 13},
+        # --- ESTUDIO UI / ARTE (abajo-izquierda, cols 1..6, rows 13..17) ---
+        {"id": "obj-art-1", "type": "art_easel",      "col": 2, "row": 14},
+        {"id": "obj-art-2", "type": "filing_cabinet", "col": 1, "row": 13},
+        {"id": "obj-art-3", "type": "trophy",         "col": 5, "row": 13},
+        {"id": "obj-art-4", "type": "plant_cactus",   "col": 1, "row": 17},
+        {"id": "obj-art-5", "type": "plant_cactus",   "col": 2, "row": 17},
     ]
 
     return {
-        "schema": "grid_v2",
+        "schema": "pixel_agents_v3",
         "floor_grid": floor_grid,
         "wall_grid": wall_grid,
         "items": items,
@@ -796,13 +1002,13 @@ def build_default_office_layout() -> Dict[str, Any]:
 
 
 # =============================================================================
-# GESTOR CENTRAL DE PERSONALIZACIÓN, CUADRÍCULA, PATHFINDING A* Y DEMANDA
+# GESTOR CENTRAL DE PERSONALIZACIÓN, CUADRÍCULA, PATHFINDING BFS Y DEMANDA
 # =============================================================================
 class CustomizationManager:
     def __init__(self, storage_path: Optional[str] = None):
         if not storage_path:
             data_dir = get_app_data_dir()
-            storage_path = os.path.join(data_dir, "customization_v2.json")
+            storage_path = os.path.join(data_dir, "customization_v3.json")
         self.storage_path = storage_path
         self.lock = threading.RLock()
 
@@ -814,6 +1020,17 @@ class CustomizationManager:
 
     def _load(self):
         if not os.path.isfile(self.storage_path):
+            # Conservar únicamente la ruta personalizada de Antigravity desde v2 si existe
+            legacy_v2 = os.path.join(os.path.dirname(self.storage_path), "customization_v2.json")
+            if os.path.isfile(legacy_v2):
+                try:
+                    with open(legacy_v2, "r", encoding="utf-8") as f:
+                        v2 = json.load(f)
+                    cbd = v2.get("custom_brain_dir")
+                    if isinstance(cbd, str) and cbd.strip():
+                        self.custom_brain_dir = cbd.strip()
+                except Exception:
+                    pass
             self._save()
             return
         try:
@@ -822,7 +1039,7 @@ class CustomizationManager:
             if isinstance(raw.get("characters"), list) and len(raw["characters"]) > 0:
                 self.characters = [normalize_character(c) for c in raw["characters"]]
             off = raw.get("office")
-            if isinstance(off, dict) and off.get("schema") == "grid_v2":
+            if isinstance(off, dict) and off.get("schema") == "pixel_agents_v3":
                 self.office = off
             cbd = raw.get("custom_brain_dir")
             if isinstance(cbd, str) and cbd.strip():
@@ -980,7 +1197,6 @@ class CustomizationManager:
                 for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                     nc, nr = c + dc, r + dr
                     if 0 <= nc < GRID_COLS and 0 <= nr < GRID_ROWS and (nc, nr) not in visited:
-                        # Detener el relleno si hay una pared en la celda vecina o si el piso es distinto
                         if wgrid[nr][nc] is not None:
                             continue
                         if fgrid[nr][nc] == target_mat:
@@ -996,7 +1212,6 @@ class CustomizationManager:
         with self.lock:
             if not (0 <= col < GRID_COLS and 0 <= row < GRID_ROWS):
                 return False
-            # Si vamos a colocar una pared, verificar que no haya un objeto ocupando esa celda
             if wall_material is not None:
                 if wall_material not in WALL_MATERIALS:
                     return False
@@ -1012,7 +1227,6 @@ class CustomizationManager:
         """Devuelve el objeto que ocupa la cuadrícula (col, row), priorizando muebles/dispositivos sobre alfombras."""
         with self.lock:
             items = self.office.get("items", [])
-            # Primero buscar objetos bloqueantes (encima de alfombras)
             for pass_blocking in (True, False):
                 for item in reversed(items):
                     spec = OBJECT_CATALOG.get(item.get("type", ""))
@@ -1033,10 +1247,6 @@ class CustomizationManager:
         row: int,
         ignore_item_id: Optional[str] = None,
     ) -> bool:
-        """
-        Verifica si un objeto de tamaño (tile_w x tile_h) cabe en las cuadrículas
-        a partir de (col, row) sin salirse del mapa ni chocar con paredes u otros objetos.
-        """
         spec = OBJECT_CATALOG.get(obj_type)
         if not spec:
             return False
@@ -1047,19 +1257,18 @@ class CustomizationManager:
         is_blocking = bool(spec.get("blocking", True))
         with self.lock:
             wgrid = self.office["wall_grid"]
-            for r in range(row, row + th):
-                for c in range(col, col + tw):
-                    if wgrid[r][c] is not None:
-                        return False
+            if obj_type != "wall_clock":
+                for r in range(row, row + th):
+                    for c in range(col, col + tw):
+                        if wgrid[r][c] is not None:
+                            return False
 
-            # Verificar colisión con otros objetos en la cuadrícula
             for other in self.office.get("items", []):
                 if other.get("id") == ignore_item_id:
                     continue
                 ospec = OBJECT_CATALOG.get(other.get("type", ""))
                 if not ospec:
                     continue
-                # Una alfombra (blocking=False) puede coexistir debajo de un mueble (blocking=True)
                 if is_blocking != bool(ospec.get("blocking", True)):
                     continue
                 oc, orow = int(other["col"]), int(other["row"])
@@ -1100,10 +1309,6 @@ class CustomizationManager:
             return True
 
     def validate_minimum_stations(self, items: List[Dict[str, Any]]) -> Tuple[bool, str]:
-        """
-        Verifica que exista al menos 1 dispositivo/mueble para cada estación esencial
-        (mín. 1 Computador, mín. 1 Estantería de Libros, etc.).
-        """
         station_counts: Dict[str, int] = {}
         for it in items:
             spec = OBJECT_CATALOG.get(it.get("type", ""))
@@ -1156,10 +1361,6 @@ class CustomizationManager:
         start_cell: Tuple[int, int],
         goal_cell: Tuple[int, int],
     ) -> List[Tuple[int, int]]:
-        """
-        Encuentra el camino más corto por cuadrículas (arriba, abajo, izquierda, derecha)
-        esquivando paredes y muebles colocados por el usuario.
-        """
         sc, sr = max(0, min(GRID_COLS - 1, start_cell[0])), max(0, min(GRID_ROWS - 1, start_cell[1]))
         gc, gr = max(0, min(GRID_COLS - 1, goal_cell[0])), max(0, min(GRID_ROWS - 1, goal_cell[1]))
         if (sc, sr) == (gc, gr):
@@ -1185,7 +1386,6 @@ class CustomizationManager:
                         queue.append((nc, nr))
 
         if (gc, gr) not in came_from:
-            # Si el usuario encerró la celda con paredes, camino directo de emergencia
             return [(gc, gr)]
 
         path: List[Tuple[int, int]] = []
@@ -1200,13 +1400,6 @@ class CustomizationManager:
     # CONTROL DE DEMANDA Y PAIR-PROGRAMMING EN CUADRÍCULAS
     # -------------------------------------------------------------------------
     def allocate_station_positions(self, agents_list: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-        """
-        Asigna cada agente a una celda de cuadrícula frente a un dispositivo de su estación.
-        Si hay menos dispositivos que agentes (ej. 2 computadores y 3 agentes):
-          - 1 agente usa el computador 1
-          - Los otros 2 comparten el computador 2: uno en la celda principal programando
-            y el otro en la celda contigua mirándolo de lado (revisando / discutiendo juntos).
-        """
         with self.lock:
             items = self.office.get("items", [])
             devices_by_station: Dict[str, List[Dict[str, Any]]] = {}
@@ -1226,7 +1419,7 @@ class CustomizationManager:
                 st_devs = devices_by_station.get(st, [])
                 if not st_devs:
                     for idx, ag in enumerate(st_agents):
-                        c, r = 25 + (idx % 4), 14 + (idx // 4)
+                        c, r = 4 + (idx % 4), 8 + (idx // 4)
                         allocations[ag["id"]] = {
                             "device_id": None,
                             "col": c,

@@ -22,6 +22,7 @@ import json
 import time
 import glob
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -388,6 +389,10 @@ class AntigravityBrainWatcher:
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
+        # Caché de telemetría de consumo (5h / 7d desde transcript.jsonl + puente /statusline)
+        self._usage_file_cache: Dict[str, Tuple[float, int, List[Tuple[float, str, str, int, int, int]]]] = {}
+        self._usage_summary_cache: Tuple[float, Optional[Dict[str, Any]]] = (0.0, None)
+
     def set_brain_dir(self, new_dir: Optional[str]):
         """Cambia en caliente la carpeta monitoreada (o vuelve a auto-detectar si es None)."""
         with self.lock:
@@ -720,6 +725,9 @@ class AntigravityBrainWatcher:
                 "detail": "Sesión iniciada",
                 "icon": "🤖",
                 "step_count": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
                 "tool_History": [],
                 "turn_complete": True,
                 "last_updated": mtime,
@@ -774,6 +782,9 @@ class AntigravityBrainWatcher:
 
         ag["step_count"] = max(ag["step_count"], int(step.get("step_index", 0)) + 1)
         ag["last_updated"] = mtime if mtime else time.time()
+        ag["input_tokens"] = ag.get("input_tokens", 0) + int(step.get("input_tokens") or 0)
+        ag["output_tokens"] = ag.get("output_tokens", 0) + int(step.get("output_tokens") or 0)
+        ag["cache_read_tokens"] = ag.get("cache_read_tokens", 0) + int(step.get("cache_read_tokens") or 0)
 
         # Actualizar modelo si viene en el step
         if model_raw:
@@ -1165,3 +1176,215 @@ class AntigravityBrainWatcher:
                 "events": new_events,
                 "recent_log": self.events[-20:][::-1],
             }
+
+    # =========================================================================
+    # RESUMEN DE USO / TOKENS (5H / 7D) Y PUENTE OFICIAL /statusline (CLI)
+    # =========================================================================
+    @staticmethod
+    def _classify_model_group(model_raw: str) -> str:
+        low = (model_raw or "").lower()
+        third_party_keys = ("claude", "gpt", "opus", "sonnet", "haiku", "o1", "o3", "o4", "codex", "openai", "anthropic")
+        return "third_party" if any(k in low for k in third_party_keys) else "gemini"
+
+    @staticmethod
+    def _parse_iso_timestamp(ts_str: str, fallback: float) -> float:
+        if not ts_str or not isinstance(ts_str, str):
+            return fallback
+        try:
+            norm = ts_str.strip()
+            if norm.endswith("Z"):
+                norm = norm[:-1] + "+00:00"
+            dt = datetime.fromisoformat(norm)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            return fallback
+
+    def get_usage_bridge_path(self) -> str:
+        """Ruta estándar donde un script /statusline del CLI puede escribir su JSON de cuota."""
+        parent = os.path.dirname(self.brain_dir) if self.brain_dir else os.path.expanduser("~/.gemini/antigravity")
+        return os.path.join(parent, "pixelavity_usage.json")
+
+    def _read_statusline_quota(self) -> Optional[Dict[str, Any]]:
+        """Lee cuotas exactas (% left / reset_in_seconds) si existe el archivo puente /statusline."""
+        candidates = [self.get_usage_bridge_path()]
+        local_app = os.environ.get("LOCALAPPDATA")
+        if local_app:
+            candidates.append(os.path.join(local_app, "MediaHub", "Pixelavity", "statusline_usage.json"))
+
+        now = time.time()
+        for path in candidates:
+            if not path or not os.path.isfile(path):
+                continue
+            try:
+                st = os.stat(path)
+                if (now - st.st_mtime) > 86400:
+                    continue
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                quota = data.get("quota")
+                if not isinstance(quota, dict):
+                    continue
+
+                def _bucket(keys: Tuple[str, ...]) -> Optional[Dict[str, Any]]:
+                    for k in keys:
+                        b = quota.get(k)
+                        if isinstance(b, dict) and "remaining_fraction" in b:
+                            frac = max(0.0, min(1.0, float(b.get("remaining_fraction", 1.0))))
+                            reset_s = int(max(0, b.get("reset_in_seconds", 0) or 0))
+                            elapsed = int(max(0, now - st.st_mtime))
+                            return {
+                                "remaining_fraction": frac,
+                                "remaining_pct": int(round(frac * 100)),
+                                "reset_in_seconds": max(0, reset_s - elapsed),
+                                "disabled": bool(b.get("disabled", False)),
+                            }
+                    return None
+
+                parsed = {
+                    "gemini_5h": _bucket(("gemini-5h", "gemini_5h")),
+                    "gemini_weekly": _bucket(("gemini-weekly", "gemini_7d", "gemini_weekly")),
+                    "third_party_5h": _bucket(("3p-5h", "claude-5h", "third_party_5h")),
+                    "third_party_weekly": _bucket(("3p-weekly", "claude-weekly", "third_party_weekly")),
+                    "updated_at": st.st_mtime,
+                    "source_path": path,
+                }
+                if any(parsed[k] is not None for k in ("gemini_5h", "gemini_weekly", "third_party_5h", "third_party_weekly")):
+                    return parsed
+            except Exception:
+                continue
+        return None
+
+    def get_usage_summary(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """Agrega tokens reales por modelo y ventanas móviles (5 horas y 7 días) desde transcript.jsonl."""
+        now = time.time()
+        if not force_refresh and self._usage_summary_cache[1] is not None and (now - self._usage_summary_cache[0]) < 3.0:
+            return self._usage_summary_cache[1]
+
+        cutoff_7d = now - 7 * 86400
+        cutoff_5h = now - 5 * 3600
+
+        def _empty_win() -> Dict[str, Any]:
+            return {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "total_tokens": 0,
+                "turns": 0,
+                "oldest_ts": None,
+            }
+
+        groups = {
+            "gemini": {"window_5h": _empty_win(), "window_7d": _empty_win()},
+            "third_party": {"window_5h": _empty_win(), "window_7d": _empty_win()},
+        }
+        by_model: Dict[str, Dict[str, Any]] = {}
+        convs_5h = set()
+        convs_7d = set()
+
+        if os.path.isdir(self.brain_dir):
+            try:
+                with os.scandir(self.brain_dir) as it:
+                    for entry in it:
+                        if not entry.is_dir():
+                            continue
+                        tpath = os.path.join(entry.path, ".system_generated", "logs", "transcript.jsonl")
+                        if not os.path.isfile(tpath):
+                            continue
+                        try:
+                            st = os.stat(tpath)
+                        except OSError:
+                            continue
+                        if st.st_mtime < cutoff_7d:
+                            continue
+
+                        cached = self._usage_file_cache.get(tpath)
+                        if cached and cached[0] == st.st_mtime and cached[1] == st.st_size:
+                            records = cached[2]
+                        else:
+                            records = []
+                            last_model = "gemini"
+                            try:
+                                with open(tpath, "r", encoding="utf-8", errors="replace") as f:
+                                    for raw_line in f:
+                                        raw_line = raw_line.strip()
+                                        if not raw_line:
+                                            continue
+                                        try:
+                                            step = json.loads(raw_line)
+                                        except json.JSONDecodeError:
+                                            continue
+                                        if step.get("model"):
+                                            last_model = str(step["model"])
+                                        in_t = int(step.get("input_tokens") or 0)
+                                        out_t = int(step.get("output_tokens") or 0)
+                                        cache_t = int(step.get("cache_read_tokens") or 0)
+                                        if in_t == 0 and out_t == 0 and cache_t == 0:
+                                            continue
+                                        ts = self._parse_iso_timestamp(step.get("created_at", ""), st.st_mtime)
+                                        grp = self._classify_model_group(last_model)
+                                        records.append((ts, grp, last_model, in_t, out_t, cache_t))
+                                self._usage_file_cache[tpath] = (st.st_mtime, st.st_size, records)
+                            except OSError:
+                                records = []
+
+                        conv_id = entry.name
+                        for ts, grp, m_raw, in_t, out_t, cache_t in records:
+                            if ts < cutoff_7d:
+                                continue
+                            tot = in_t + out_t
+                            convs_7d.add(conv_id)
+                            w7 = groups[grp]["window_7d"]
+                            w7["input_tokens"] += in_t
+                            w7["output_tokens"] += out_t
+                            w7["cache_read_tokens"] += cache_t
+                            w7["total_tokens"] += tot
+                            w7["turns"] += 1
+                            if w7["oldest_ts"] is None or ts < w7["oldest_ts"]:
+                                w7["oldest_ts"] = ts
+
+                            if ts >= cutoff_5h:
+                                convs_5h.add(conv_id)
+                                w5 = groups[grp]["window_5h"]
+                                w5["input_tokens"] += in_t
+                                w5["output_tokens"] += out_t
+                                w5["cache_read_tokens"] += cache_t
+                                w5["total_tokens"] += tot
+                                w5["turns"] += 1
+                                if w5["oldest_ts"] is None or ts < w5["oldest_ts"]:
+                                    w5["oldest_ts"] = ts
+
+                            disp = format_model_display_name(m_raw)
+                            m_entry = by_model.setdefault(disp, {
+                                "model": disp,
+                                "group": grp,
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                                "cache_read_tokens": 0,
+                                "total_tokens": 0,
+                                "turns": 0,
+                            })
+                            m_entry["input_tokens"] += in_t
+                            m_entry["output_tokens"] += out_t
+                            m_entry["cache_read_tokens"] += cache_t
+                            m_entry["total_tokens"] += tot
+                            m_entry["turns"] += 1
+            except OSError:
+                pass
+
+        quota = self._read_statusline_quota()
+        models_sorted = sorted(by_model.values(), key=lambda m: m["total_tokens"], reverse=True)
+        summary = {
+            "timestamp": now,
+            "mode": "exact_quota" if quota else "transcript",
+            "quota": quota,
+            "gemini": groups["gemini"],
+            "third_party": groups["third_party"],
+            "by_model": models_sorted[:8],
+            "conversations_5h": len(convs_5h),
+            "conversations_7d": len(convs_7d),
+            "bridge_path": self.get_usage_bridge_path(),
+        }
+        self._usage_summary_cache = (now, summary)
+        return summary
