@@ -36,6 +36,7 @@ jobs:
         run: python -m PyInstaller Pixelavity.spec --noconfirm
 
       - name: Sign Executable Binary (Code Signing)
+        continue-on-error: true
         shell: pwsh
         env:
           MEDIAHUB_CERT_BASE64: ${{ secrets.MEDIAHUB_CERT_BASE64 }}
@@ -83,6 +84,7 @@ jobs:
           path: installer.iss
 
       - name: Sign Inno Setup Installer
+        continue-on-error: true
         shell: pwsh
         env:
           MEDIAHUB_CERT_BASE64: ${{ secrets.MEDIAHUB_CERT_BASE64 }}

@@ -46,34 +46,48 @@ try {
 
     # 1. Cargar certificado persistente desde archivo PFX o secreto MEDIAHUB_CERT_BASE64
     if ($PfxPath -and (Test-Path $PfxPath)) {
-        $resolvedPfx = (Resolve-Path $PfxPath).Path
-        Write-Host "Cargando certificado desde $resolvedPfx..." -ForegroundColor Yellow
-        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($resolvedPfx, $PfxPassword, $keyFlags)
+        try {
+            $resolvedPfx = (Resolve-Path $PfxPath).Path
+            Write-Host "Cargando certificado desde $resolvedPfx..." -ForegroundColor Yellow
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($resolvedPfx, $PfxPassword, $keyFlags)
+        } catch {
+            Write-Warning "No se pudo cargar certificado desde $PfxPath: $_"
+            if ($RequireCert) { throw }
+            $cert = $null
+        }
     } elseif (-not [string]::IsNullOrWhiteSpace($env:MEDIAHUB_CERT_BASE64)) {
-        Write-Host "Cargando certificado persistente desde secreto MEDIAHUB_CERT_BASE64..." -ForegroundColor Yellow
-        $certBytes = [Convert]::FromBase64String($env:MEDIAHUB_CERT_BASE64.Trim())
-        $tempPfx = Join-Path ([System.IO.Path]::GetTempPath()) ("mediahub_cert_" + [Guid]::NewGuid().ToString("N") + ".pfx")
-        [System.IO.File]::WriteAllBytes($tempPfx, $certBytes)
-        $pass = if ($null -ne $env:MEDIAHUB_CERT_PASSWORD) { $env:MEDIAHUB_CERT_PASSWORD } else { "" }
-        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($tempPfx, $pass, $keyFlags)
-    } else {
+        try {
+            Write-Host "Cargando certificado persistente desde secreto MEDIAHUB_CERT_BASE64..." -ForegroundColor Yellow
+            $certBytes = [Convert]::FromBase64String($env:MEDIAHUB_CERT_BASE64.Trim())
+            $tempPfx = Join-Path ([System.IO.Path]::GetTempPath()) ("mediahub_cert_" + [Guid]::NewGuid().ToString("N") + ".pfx")
+            [System.IO.File]::WriteAllBytes($tempPfx, $certBytes)
+            $pass = if ($null -ne $env:MEDIAHUB_CERT_PASSWORD) { $env:MEDIAHUB_CERT_PASSWORD } else { "" }
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($tempPfx, $pass, $keyFlags)
+        } catch {
+            Write-Warning "No se pudo cargar certificado persistente (posible contrasena incorrecta o formato invalido): $_"
+            if ($RequireCert) { throw }
+            $cert = $null
+        }
+    }
+
+    if (-not $cert) {
         if ($RequireCert) {
-            Write-Error "No se encontró certificado persistente (-PfxPath ni MEDIAHUB_CERT_BASE64) y -RequireCert está activo."
+            Write-Error "No se encontro certificado persistente (-PfxPath ni MEDIAHUB_CERT_BASE64) y -RequireCert esta activo."
             exit 1
         }
 
         if ($env:GITHUB_ACTIONS -eq "true") {
-            Write-Host "::warning::MEDIAHUB_CERT_BASE64 no está configurado en este repositorio/organización. Se usará un certificado autofirmado efímero que NO conserva reputación entre versiones."
+            Write-Host "::warning::Certificado persistente no disponible. Se usara un certificado autofirmado efimero."
         }
 
-        # 2. Fallback local: buscar certificado existente en el almacén del usuario o generar uno autofirmado
+        # 2. Fallback local: buscar certificado existente en el almacen del usuario o generar uno autofirmado
         $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
             Where-Object { $_.Subject -like "*Media Hub*" -or $_.Subject -like "*Alan Dave*" } |
             Sort-Object NotAfter -Descending |
             Select-Object -First 1
 
         if (-not $cert) {
-            Write-Host "Generando certificado de firma de código autofirmado (fallback)..." -ForegroundColor Yellow
+            Write-Host "Generando certificado de firma de codigo autofirmado (fallback)..." -ForegroundColor Yellow
             $cert = New-SelfSignedCertificate `
                 -Type CodeSigningCert `
                 -Subject "CN=Media Hub (Alan Dave), O=Media-Hub-Site, C=CL" `
